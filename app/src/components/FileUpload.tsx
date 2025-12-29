@@ -17,7 +17,20 @@ export function FileUpload() {
       setData({
         shifts: [],
         volunteers: [],
-        settings: { minPoints: 6, maxOver: 2, seed: 42, maxShifts: 999 },
+        settings: {
+          minPoints: 6,
+          maxOver: 2,
+          maxShifts: 10,
+          forbidBackToBack: false,
+          backToBackGap: 2,
+          guaranteeLevel: 0,
+          allowRelaxation: false,
+          detectedGuarantee: 0,
+          detectedMinPoints: { min: 0, max: 10, recommended: 6 },
+          detectedMaxOver: { min: 0, max: 5, recommended: 2 },
+          detectedMaxShifts: { min: 1, max: 20, recommended: 10 },
+          seed: Math.floor(Math.random() * 1000000)
+        },
         errors: [`Failed to read file: ${error instanceof Error ? error.message : String(error)}`],
         warnings: []
       });
@@ -58,7 +71,7 @@ export function FileUpload() {
       <h2 className="text-2xl font-bold text-gray-800 mb-4">Upload Shift Data</h2>
 
       <p className="text-gray-600 mb-6">
-        Upload an Excel file (.xlsx) with three sheets: <strong>Shifts</strong>, <strong>Prefs</strong>, and <strong>Settings</strong>.
+        Upload an Excel file (.xlsx) with two sheets: <strong>Shifts</strong> and <strong>Prefs</strong>.
       </p>
 
       <div
@@ -118,9 +131,11 @@ export function FileUpload() {
         <h3 className="font-semibold text-gray-700 mb-2">Expected File Format:</h3>
         <div className="text-sm text-gray-600 space-y-2">
           <p><strong>Shifts sheet:</strong> ShiftID, Date, Role, StartTime, EndTime, Capacity, Points</p>
-          <p><strong>Prefs sheet:</strong> Volunteer, MinPoints (optional), then one column per ShiftID with rank values (1-5)</p>
-          <p><strong>Settings sheet:</strong> MIN_POINTS, MAX_OVER, SEED (optional), MAX_SHIFTS (optional)</p>
+          <p><strong>Prefs sheet:</strong> Volunteer, PreAssignedPoints (optional, defaults to 0), then one column per ShiftID with rank values (1-5)</p>
         </div>
+        <p className="text-sm text-gray-500 mt-3 italic">
+          Optimization settings are configured on the next page after upload.
+        </p>
       </div>
     </div>
   );

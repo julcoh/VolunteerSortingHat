@@ -143,3 +143,49 @@ It produces:
 - Original notebook: `PreviousData/fruitPOP_Sorting_Hat.ipynb`
 - Documentation: `PreviousData/fruitPOP Sorting Hat README.pdf`
 - Example data: `PreviousData/fruitPOP Shifts 2025.xlsx`
+
+---
+
+## Section 9: Versioning
+
+The app version is stored in `app/src/version.ts` and displayed in the site footer.
+
+**Version Format: `x.y.zzz`**
+
+| Segment | When to Increment | Who |
+|---------|-------------------|-----|
+| `x` | Major version changes | Only when Julien explicitly requests |
+| `y` | Each git commit | Increment when creating a commit |
+| `zzz` | Each code change via terminal | Increment after every code modification |
+
+**Rules:**
+- Increment `zzz` after making code changes (even small ones)
+- When committing, increment `y` and reset `zzz` to `001`
+- `x` only changes when Julien explicitly requests a major version bump
+
+**Example progression:**
+- `0.1.001` - initial
+- `0.1.002` - after a code change
+- `0.1.003` - after another code change
+- `0.2.001` - after git commit (y increments, zzz resets)
+- `1.0.001` - after Julien requests major version bump
+
+---
+
+## Section 10: Change Tracking
+
+Keep a running log of all significant changes between this web app and the original Colab/Sheets version in `fruitPOPChangesSummary.md`.
+
+**What to track:**
+- Algorithm changes (solver approach, objective function, constraints)
+- Input format changes (column names, file format, removed/added fields)
+- New features not in the original
+- Removed features from the original
+- Behavior differences (even if subtle)
+
+**When to update:**
+- After implementing any feature that differs from the original Colab script
+- After changing how inputs are interpreted
+- After modifying the optimization algorithm
+
+This file serves as release notes for Julien to communicate changes to existing fruitPOP users.

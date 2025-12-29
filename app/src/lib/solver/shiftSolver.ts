@@ -79,12 +79,12 @@ function shiftsOverlap(s1: Shift, s2: Shift): boolean {
   return s1.startTime < s2.endTime && s2.startTime < s1.endTime;
 }
 
-// Check if two shifts are sequential (s2 starts within 2 hours after s1 ends)
-function shiftsSequential(s1: Shift, s2: Shift): boolean {
+// Check if two shifts are sequential (s2 starts within gapHours after s1 ends)
+function shiftsSequential(s1: Shift, s2: Shift, gapHours: number): boolean {
   if (s1.date !== s2.date) return false;
-  const twoHours = 2 * 60 * 60 * 1000;
+  const gapMs = gapHours * 60 * 60 * 1000;
   const gap = s2.startTime.getTime() - s1.endTime.getTime();
-  return gap >= 0 && gap <= twoHours;
+  return gap >= 0 && gap <= gapMs;
 }
 
 interface SolverInput {
@@ -107,12 +107,13 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
   const volByName = new Map(volunteers.map(v => [v.name, v]));
 
   // Compute volunteer min/max points
+  // Effective minPoints = global minPoints - preAssignedPoints (but not below 0)
   const volMinPoints = new Map<string, number>();
   const volMaxPoints = new Map<string, number>();
   for (const v of volunteers) {
-    const minPts = v.minPoints ?? settings.minPoints;
-    volMinPoints.set(v.name, minPts);
-    volMaxPoints.set(v.name, minPts + settings.maxOver);
+    const effectiveMin = Math.max(0, settings.minPoints - v.preAssignedPoints);
+    volMinPoints.set(v.name, effectiveMin);
+    volMaxPoints.set(v.name, effectiveMin + settings.maxOver);
   }
 
   // Find overlapping and sequential shift pairs
@@ -126,7 +127,7 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
       }
     }
     for (let j = 0; j < shifts.length; j++) {
-      if (i !== j && shiftsSequential(shifts[i], shifts[j])) {
+      if (i !== j && shiftsSequential(shifts[i], shifts[j], settings.backToBackGap)) {
         sequentialPairs.push([shifts[i].id, shifts[j].id]);
       }
     }
@@ -134,6 +135,7 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
 
   log(`Found ${overlappingPairs.length} overlapping shift pairs`);
   log(`Found ${sequentialPairs.length} sequential shift pairs`);
+  log(`Guarantee level: ${settings.guaranteeLevel > 0 ? `Top ${settings.guaranteeLevel}` : 'None (at least 1 shift)'}`);
 
   // Get preference rank (infinity if not ranked)
   function getRank(volName: string, shiftId: string): number {
@@ -142,18 +144,25 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
     return vol.preferences.get(shiftId) ?? Infinity;
   }
 
+  // Satisfaction score for a volunteer: sum of (6 - rank) for each assigned shift
+  // Rank 1 = 5 points, Rank 2 = 4 points, ..., Rank 5 = 1 point, unranked = 0
+  function getSatisfactionWeight(rank: number): number {
+    if (rank >= 1 && rank <= 5) return 6 - rank;
+    return 0;
+  }
+
   // Initialize HiGHS solver
   const highs = await loadHighs();
 
-  // ========== PHASE 1: Flexible Fill ==========
-  log('Running Phase 1 (flexible fill, top 5 preferences only)...');
+  // ========== MAIN OPTIMIZATION ==========
+  log('Running egalitarian optimization with guarantee constraints...');
 
-  const phase1Result = await runPhase(1);
+  const result = await runEgalitarianSolver();
 
-  if (phase1Result.status === 'optimal' || phase1Result.status === 'feasible') {
+  if (result.status === 'optimal' || result.status === 'feasible') {
     // Check if all shifts are fully staffed
     const assignmentCounts = new Map<string, number>();
-    for (const a of phase1Result.assignments) {
+    for (const a of result.assignments) {
       assignmentCounts.set(a.shiftId, (assignmentCounts.get(a.shiftId) ?? 0) + 1);
     }
 
@@ -167,25 +176,68 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
     }
 
     if (allFilled) {
-      log('Phase 1 succeeded - all shifts fully staffed!');
-      return phase1Result;
+      log('All shifts fully staffed!');
+      return result;
     } else {
-      log('Phase 1 left some shifts underfilled, running Phase 2...');
+      log('Some shifts underfilled, running hard-fill phase...');
+      return await runHardFillPhase(result.assignments);
     }
   } else {
-    log('Phase 1 infeasible, running Phase 2...');
+    log('Egalitarian optimization failed, trying hard-fill approach...');
+    return await runHardFillPhase([]);
   }
 
-  // ========== PHASE 2: Hard Fill ==========
-  log('Running Phase 2 (hard fill, all preferences)...');
+  // ========== Egalitarian Solver with Average Satisfaction ==========
+  // Uses binary search to find the maximum achievable minimum AVERAGE satisfaction per shift
+  // This ensures proportional fairness: volunteers with fewer shifts get similar quality
+  async function runEgalitarianSolver(): Promise<SolverResult> {
+    log('Using average satisfaction optimization for proportional fairness...');
 
-  const phase2Result = await runPhase(2);
-  return phase2Result;
+    // Binary search for maximum achievable minimum average satisfaction
+    // Range: 0 to 5 (max possible avg if all rank 1)
+    let low = 0;
+    let high = 5;
+    let bestResult: SolverResult | null = null;
+    let bestAvg = 0;
+    const tolerance = 0.1;
 
-  // ========== Phase Runner ==========
-  async function runPhase(phase: 1 | 2): Promise<SolverResult> {
-    const SCALE = 10;  // Scale factor for fractional points
-    const bestCut = phase === 1 ? 5 : Infinity;
+    while (high - low > tolerance) {
+      const targetAvg = (low + high) / 2;
+      log(`Trying target average satisfaction: ${targetAvg.toFixed(2)}`);
+
+      const result = await tryWithTargetAverage(targetAvg);
+
+      if (result.status === 'optimal' || result.status === 'feasible') {
+        // Feasible at this target, try higher
+        bestResult = result;
+        bestAvg = targetAvg;
+        low = targetAvg;
+      } else {
+        // Infeasible, try lower
+        high = targetAvg;
+      }
+    }
+
+    if (bestResult) {
+      log(`Achieved minimum average satisfaction: ${bestAvg.toFixed(2)} per shift`);
+      bestResult.message = `Optimization succeeded. Min avg satisfaction: ${bestAvg.toFixed(2)}/shift`;
+      return bestResult;
+    }
+
+    // No feasible solution found even at avg=0, return error
+    return {
+      status: 'infeasible',
+      phase: 1,
+      assignments: [],
+      message: 'Unable to find any feasible solution with the given constraints.'
+    };
+  }
+
+  // Try to solve with a target minimum average satisfaction
+  async function tryWithTargetAverage(targetAvg: number): Promise<SolverResult> {
+    const SCALE = 10;
+    // Use the actual guarantee level - 0 means "no guarantee" (just require at least 1 shift)
+    const guaranteeLevel = settings.guaranteeLevel;
 
     // Build variable indices: x[v,s] = 1 if volunteer v assigned to shift s
     const varIndex = new Map<string, number>();
@@ -196,63 +248,45 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
       }
     }
 
-    // Sequential penalty variables (for soft constraints)
+    // Sequential penalty variables (for soft constraints when not forbidden)
     const seqVarIndex = new Map<string, number>();
-    for (const vName of volunteerNames) {
-      for (const [s1, s2] of sequentialPairs) {
-        seqVarIndex.set(`seq|${vName}|${s1}|${s2}`, varCount++);
+    if (!settings.forbidBackToBack) {
+      for (const vName of volunteerNames) {
+        for (const [s1, s2] of sequentialPairs) {
+          seqVarIndex.set(`seq|${vName}|${s1}|${s2}`, varCount++);
+        }
       }
     }
 
     const numVars = varCount;
 
-    // Build LP in column-major format for HiGHS
-    // HiGHS uses: min c'x, s.t. L <= Ax <= U, l <= x <= u
+    // Build LP - objective is to maximize total satisfaction (as tiebreaker)
     const colCost: number[] = new Array(numVars).fill(0);
 
-    // Objective coefficients
-    // Phase 1: maximize preferences (higher weight = better)
-    // Phase 2: minimize (penalties - preferences)
-    const penaltyWeight = phase === 1 ? 100000000 : 10000000;
-
+    // Maximize total satisfaction
     for (const vName of volunteerNames) {
       for (const sId of shiftIds) {
         const idx = varIndex.get(`${vName}|${sId}`)!;
-        const rank = getRank(vName, sId);
-
-        let weight = 0;
-        if (phase === 1) {
-          if (rank === 1) weight = 300;
-          else if (rank === 2) weight = 200;
-          else if (rank === 3) weight = 100;
-          else if (rank >= 4 && rank <= bestCut) weight = 50;
-          else continue;  // Skip unranked in Phase 1 objective
-        } else {
-          if (rank === 1) weight = 500;
-          else if (rank === 2) weight = 300;
-          else if (rank === 3) weight = 200;
-          else if (rank === 4) weight = 100;
-          else if (rank === 5) weight = 50;
-          else weight = 1;
-        }
-
-        weight += rand.randInt(0, 9);  // Jitter to break ties
-        colCost[idx] = -weight;  // Negative because we're minimizing
+        const weight = getSatisfactionWeight(getRank(vName, sId));
+        colCost[idx] = -weight;  // Negative because HiGHS minimizes
       }
     }
 
-    // Sequential penalty variables - add to objective
-    for (const vName of volunteerNames) {
-      for (const [s1, s2] of sequentialPairs) {
-        const idx = seqVarIndex.get(`seq|${vName}|${s1}|${s2}`)!;
-        colCost[idx] = penaltyWeight;  // Penalty for sequential shifts
+    // Penalty for sequential shifts (if not forbidden)
+    const penaltyWeight = 100000;
+    if (!settings.forbidBackToBack) {
+      for (const vName of volunteerNames) {
+        for (const [s1, s2] of sequentialPairs) {
+          const idx = seqVarIndex.get(`seq|${vName}|${s1}|${s2}`)!;
+          colCost[idx] = penaltyWeight;
+        }
       }
     }
 
     // Build constraints
     const constraints: { row: number[], val: number[], lower: number, upper: number }[] = [];
 
-    // 1. Shift capacity constraints
+    // 1. Shift capacity constraints (soft - <= capacity)
     for (const shift of shifts) {
       const row: number[] = [];
       const val: number[] = [];
@@ -261,13 +295,7 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
         row.push(idx);
         val.push(1);
       }
-      if (phase === 1) {
-        // Phase 1: <= capacity (soft)
-        constraints.push({ row, val, lower: 0, upper: shift.capacity });
-      } else {
-        // Phase 2: == capacity (hard)
-        constraints.push({ row, val, lower: shift.capacity, upper: shift.capacity });
-      }
+      constraints.push({ row, val, lower: 0, upper: shift.capacity });
     }
 
     // 2. Volunteer constraints
@@ -298,21 +326,25 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
       }
       constraints.push({ row: maxShiftRow, val: maxShiftVal, lower: 0, upper: settings.maxShifts });
 
-      // 2d. At least one from top preferences
-      if (phase === 1) {
+      // 2d. GUARANTEE: At least one from top-N preferences
+      if (guaranteeLevel > 0) {
         const eligibleRow: number[] = [];
         const eligibleVal: number[] = [];
         for (const sId of shiftIds) {
-          if (getRank(vName, sId) <= bestCut) {
+          if (getRank(vName, sId) <= guaranteeLevel) {
             eligibleRow.push(varIndex.get(`${vName}|${sId}`)!);
             eligibleVal.push(1);
           }
         }
         if (eligibleRow.length > 0) {
+          // Must get at least 1 shift from top-N preferences
           constraints.push({ row: eligibleRow, val: eligibleVal, lower: 1, upper: Infinity });
+        } else {
+          // Volunteer has no top-N preferences - still require at least 1 shift
+          constraints.push({ row: [...maxShiftRow], val: [...maxShiftVal], lower: 1, upper: Infinity });
         }
       } else {
-        // Phase 2: at least one shift total
+        // No guarantee level - just ensure at least one shift
         constraints.push({ row: [...maxShiftRow], val: [...maxShiftVal], lower: 1, upper: Infinity });
       }
 
@@ -322,57 +354,51 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
         const idx2 = varIndex.get(`${vName}|${s2}`)!;
         constraints.push({ row: [idx1, idx2], val: [1, 1], lower: 0, upper: 1 });
       }
+
+      // 2f. Sequential shift constraints
+      if (settings.forbidBackToBack) {
+        for (const [s1, s2] of sequentialPairs) {
+          const idx1 = varIndex.get(`${vName}|${s1}`)!;
+          const idx2 = varIndex.get(`${vName}|${s2}`)!;
+          constraints.push({ row: [idx1, idx2], val: [1, 1], lower: 0, upper: 1 });
+        }
+      }
+
+      // 2g. AVERAGE SATISFACTION CONSTRAINT
+      // For avg satisfaction >= targetAvg:
+      // sum(weight * x) >= targetAvg * sum(x)
+      // sum(weight * x) - targetAvg * sum(x) >= 0
+      // sum((weight - targetAvg) * x) >= 0
+      const avgRow: number[] = [];
+      const avgVal: number[] = [];
+      for (const sId of shiftIds) {
+        const idx = varIndex.get(`${vName}|${sId}`)!;
+        const weight = getSatisfactionWeight(getRank(vName, sId));
+        const adjustedWeight = weight - targetAvg;
+        avgRow.push(idx);
+        avgVal.push(adjustedWeight);
+      }
+      constraints.push({ row: avgRow, val: avgVal, lower: 0, upper: Infinity });
     }
 
-    // 3. Sequential shift penalty constraints
-    // seq_var >= x[v,s1] + x[v,s2] - 1  =>  x[v,s1] + x[v,s2] - seq_var <= 1
-    for (const vName of volunteerNames) {
-      for (const [s1, s2] of sequentialPairs) {
-        const xIdx1 = varIndex.get(`${vName}|${s1}`)!;
-        const xIdx2 = varIndex.get(`${vName}|${s2}`)!;
-        const seqIdx = seqVarIndex.get(`seq|${vName}|${s1}|${s2}`)!;
-        constraints.push({
-          row: [xIdx1, xIdx2, seqIdx],
-          val: [1, 1, -1],
-          lower: -Infinity,
-          upper: 1
-        });
+    // 3. Sequential shift penalty constraints (only when using soft penalties)
+    if (!settings.forbidBackToBack) {
+      for (const vName of volunteerNames) {
+        for (const [s1, s2] of sequentialPairs) {
+          const xIdx1 = varIndex.get(`${vName}|${s1}`)!;
+          const xIdx2 = varIndex.get(`${vName}|${s2}`)!;
+          const seqIdx = seqVarIndex.get(`seq|${vName}|${s1}|${s2}`)!;
+          constraints.push({
+            row: [xIdx1, xIdx2, seqIdx],
+            val: [1, 1, -1],
+            lower: -Infinity,
+            upper: 1
+          });
+        }
       }
     }
 
-    // Convert constraints to HiGHS sparse matrix format
-    const rowLower: number[] = [];
-    const rowUpper: number[] = [];
-    const aStart: number[] = [0];
-    const aIndex: number[] = [];
-    const aValue: number[] = [];
-
-    // HiGHS uses column-major format, but we built row-major
-    // We need to transpose: build by iterating rows and collecting column entries
-    const colEntries: { row: number, val: number }[][] = Array.from({ length: numVars }, () => []);
-
-    for (let r = 0; r < constraints.length; r++) {
-      const c = constraints[r];
-      rowLower.push(c.lower === -Infinity ? -1e30 : c.lower);
-      rowUpper.push(c.upper === Infinity ? 1e30 : c.upper);
-
-      for (let i = 0; i < c.row.length; i++) {
-        colEntries[c.row[i]].push({ row: r, val: c.val[i] });
-      }
-    }
-
-    // Build column-major sparse matrix
-    for (let col = 0; col < numVars; col++) {
-      for (const entry of colEntries[col]) {
-        aIndex.push(entry.row);
-        aValue.push(entry.val);
-      }
-      aStart.push(aIndex.length);
-    }
-
-    // Create the problem - convert constraints to LP format
-    // LP format doesn't support range constraints like "1 <= expr <= 2"
-    // So we split them into separate >= and <= constraints
+    // Convert to LP format
     const lpConstraints: string[] = [];
     let constraintNum = 0;
 
@@ -380,10 +406,273 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
       const terms = c.row.map((idx, j) => `${c.val[j] >= 0 ? '+' : ''}${c.val[j]} x${idx}`).join(' ');
 
       if (c.lower !== -Infinity && c.upper !== Infinity && c.lower === c.upper) {
-        // Equality constraint: expr = value
         lpConstraints.push(`c${constraintNum++}: ${terms} = ${c.lower}`);
       } else {
-        // Handle lower and upper bounds separately
+        if (c.lower !== -Infinity) {
+          lpConstraints.push(`c${constraintNum++}: ${terms} >= ${c.lower}`);
+        }
+        if (c.upper !== Infinity) {
+          lpConstraints.push(`c${constraintNum++}: ${terms} <= ${c.upper}`);
+        }
+      }
+    }
+
+    // All assignment variables are binary
+    const binaryVars: string[] = [];
+    for (const vName of volunteerNames) {
+      for (const sId of shiftIds) {
+        const idx = varIndex.get(`${vName}|${sId}`)!;
+        binaryVars.push(`x${idx}`);
+      }
+    }
+
+    // Sequential penalty variables are binary
+    if (!settings.forbidBackToBack) {
+      for (const vName of volunteerNames) {
+        for (const [s1, s2] of sequentialPairs) {
+          const idx = seqVarIndex.get(`seq|${vName}|${s1}|${s2}`)!;
+          binaryVars.push(`x${idx}`);
+        }
+      }
+    }
+
+    const problem = `
+Minimize
+obj: ${colCost.map((c, i) => `${c >= 0 ? '+' : ''}${c} x${i}`).join(' ')}
+Subject To
+${lpConstraints.join('\n')}
+Binary
+${binaryVars.join(' ')}
+End
+`;
+
+    try {
+      const result = highs.solve(problem);
+
+      if (result.Status === 'Optimal' || result.Status === 'Time limit reached') {
+        const assignments: Assignment[] = [];
+
+        for (const vName of volunteerNames) {
+          for (const sId of shiftIds) {
+            const idx = varIndex.get(`${vName}|${sId}`)!;
+            const varName = `x${idx}`;
+            const value = result.Columns[varName]?.Primal ?? 0;
+            if (value > 0.5) {
+              assignments.push({ volunteerName: vName, shiftId: sId });
+            }
+          }
+        }
+
+        return {
+          status: result.Status === 'Optimal' ? 'optimal' : 'feasible',
+          phase: 1,
+          assignments,
+          message: `Found solution with target avg ${targetAvg.toFixed(2)}`
+        };
+      } else {
+        return {
+          status: 'infeasible',
+          phase: 1,
+          assignments: [],
+          message: `Infeasible at target avg ${targetAvg.toFixed(2)}`
+        };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+
+      // HiGHS WASM crashes with Aborted() when problem is infeasible
+      if (errorMsg.includes('Aborted')) {
+        return {
+          status: 'infeasible',
+          phase: 1,
+          assignments: [],
+          message: `Infeasible at target avg ${targetAvg.toFixed(2)}`
+        };
+      }
+
+      // Re-throw unexpected errors
+      throw error;
+    }
+  }
+
+  // ========== Hard Fill Phase (for unfilled shifts) ==========
+  async function runHardFillPhase(existingAssignments: Assignment[]): Promise<SolverResult> {
+    log('Running hard-fill phase to ensure all shifts are staffed...');
+
+    // Define relaxation levels - only used if allowRelaxation is true
+    const relaxationLevels: Array<{
+      name: 'full' | 'relaxed-points' | 'minimal';
+      minPointsMultiplier: number;
+      maxShiftsMultiplier: number;
+      maxPointsMultiplier: number;  // Added to control max points too
+    }> = settings.allowRelaxation ? [
+      { name: 'full', minPointsMultiplier: 1.0, maxShiftsMultiplier: 1.0, maxPointsMultiplier: 1.0 },
+      { name: 'relaxed-points', minPointsMultiplier: 0.5, maxShiftsMultiplier: 1.5, maxPointsMultiplier: 1.5 },
+      { name: 'minimal', minPointsMultiplier: 0, maxShiftsMultiplier: 2.0, maxPointsMultiplier: 2.0 },
+    ] : [
+      // Only try full constraints if relaxation is disabled
+      { name: 'full', minPointsMultiplier: 1.0, maxShiftsMultiplier: 1.0, maxPointsMultiplier: 1.0 },
+    ];
+
+    for (const level of relaxationLevels) {
+      const result = await tryHardFill(level.minPointsMultiplier, level.maxShiftsMultiplier, level.maxPointsMultiplier);
+      if (result.status === 'optimal' || result.status === 'feasible') {
+        if (level.name !== 'full') {
+          result.message += ` (used ${level.name} constraints)`;
+          // Add relaxation details so the UI can show warnings
+          result.relaxation = {
+            level: level.name,
+            minPointsMultiplier: level.minPointsMultiplier,
+            maxShiftsMultiplier: level.maxShiftsMultiplier,
+            originalMinPoints: settings.minPoints,
+            originalMaxShifts: settings.maxShifts
+          };
+        }
+        return result;
+      }
+      log(`Hard-fill with ${level.name} constraints failed, trying next level...`);
+    }
+
+    // All attempts failed
+    if (settings.forbidBackToBack) {
+      return {
+        status: 'infeasible',
+        phase: 2,
+        assignments: existingAssignments,
+        message: `Unable to fill all shifts with "Forbid back-to-back" enabled. The shift schedule may require some volunteers to work consecutive shifts. Try using "Minimize" instead.`
+      };
+    }
+    return {
+      status: 'infeasible',
+      phase: 2,
+      assignments: existingAssignments,
+      message: `Unable to fill all shifts. There may not be enough volunteers to cover all shift capacity, or too many overlapping shifts create scheduling conflicts.`
+    };
+  }
+
+  async function tryHardFill(minPointsMultiplier: number, maxShiftsMultiplier: number, maxPointsMultiplier: number): Promise<SolverResult> {
+    const SCALE = 10;
+
+    // Build variable indices
+    const varIndex = new Map<string, number>();
+    let varCount = 0;
+    for (const vName of volunteerNames) {
+      for (const sId of shiftIds) {
+        varIndex.set(`${vName}|${sId}`, varCount++);
+      }
+    }
+
+    const numVars = varCount;
+    const colCost: number[] = new Array(numVars).fill(0);
+
+    // Objective: maximize preference satisfaction
+    for (const vName of volunteerNames) {
+      for (const sId of shiftIds) {
+        const idx = varIndex.get(`${vName}|${sId}`)!;
+        const rank = getRank(vName, sId);
+        let weight = 1;
+        if (rank === 1) weight = 500;
+        else if (rank === 2) weight = 300;
+        else if (rank === 3) weight = 200;
+        else if (rank === 4) weight = 100;
+        else if (rank === 5) weight = 50;
+        weight += rand.randInt(0, 9);
+        colCost[idx] = -weight;
+      }
+    }
+
+    const constraints: { row: number[], val: number[], lower: number, upper: number }[] = [];
+
+    // 1. Shift capacity constraints - HARD (== capacity)
+    for (const shift of shifts) {
+      const row: number[] = [];
+      const val: number[] = [];
+      for (const vName of volunteerNames) {
+        const idx = varIndex.get(`${vName}|${shift.id}`)!;
+        row.push(idx);
+        val.push(1);
+      }
+      constraints.push({ row, val, lower: shift.capacity, upper: shift.capacity });
+    }
+
+    // 2. Volunteer constraints
+    for (const vName of volunteerNames) {
+      // Apply relaxation multipliers
+      const baseMinPts = volMinPoints.get(vName)! * minPointsMultiplier;
+      const minPtsScaled = Math.floor(baseMinPts * SCALE);
+      // Max points now respects the multiplier instead of always being 1.5x
+      const maxPtsScaled = Math.ceil(volMaxPoints.get(vName)! * SCALE * maxPointsMultiplier);
+
+      const minRow: number[] = [];
+      const minVal: number[] = [];
+      for (const sId of shiftIds) {
+        const idx = varIndex.get(`${vName}|${sId}`)!;
+        const pts = Math.round(shiftById.get(sId)!.points * SCALE);
+        minRow.push(idx);
+        minVal.push(pts);
+      }
+      if (minPtsScaled > 0) {
+        constraints.push({ row: minRow, val: minVal, lower: minPtsScaled, upper: Infinity });
+      }
+      constraints.push({ row: [...minRow], val: [...minVal], lower: -Infinity, upper: maxPtsScaled });
+
+      const maxShiftRow: number[] = [];
+      const maxShiftVal: number[] = [];
+      for (const sId of shiftIds) {
+        maxShiftRow.push(varIndex.get(`${vName}|${sId}`)!);
+        maxShiftVal.push(1);
+      }
+      const adjustedMaxShifts = Math.ceil(settings.maxShifts * maxShiftsMultiplier);
+      constraints.push({ row: maxShiftRow, val: maxShiftVal, lower: 0, upper: adjustedMaxShifts });
+
+      // GUARANTEE: At least one from top-N preferences (or at least 1 shift if no guarantee)
+      const guaranteeLevel = settings.guaranteeLevel || 0;
+      if (guaranteeLevel > 0) {
+        const eligibleRow: number[] = [];
+        const eligibleVal: number[] = [];
+        for (const sId of shiftIds) {
+          if (getRank(vName, sId) <= guaranteeLevel) {
+            eligibleRow.push(varIndex.get(`${vName}|${sId}`)!);
+            eligibleVal.push(1);
+          }
+        }
+        if (eligibleRow.length > 0) {
+          // Must get at least 1 shift from top-N preferences
+          constraints.push({ row: eligibleRow, val: eligibleVal, lower: 1, upper: Infinity });
+        } else {
+          // Volunteer has no top-N preferences, just require at least 1 shift
+          constraints.push({ row: [...maxShiftRow], val: [...maxShiftVal], lower: 1, upper: Infinity });
+        }
+      } else {
+        // No guarantee level - just ensure at least one shift
+        constraints.push({ row: [...maxShiftRow], val: [...maxShiftVal], lower: 1, upper: Infinity });
+      }
+
+      // These are always hard constraints (physical impossibility)
+      for (const [s1, s2] of overlappingPairs) {
+        const idx1 = varIndex.get(`${vName}|${s1}`)!;
+        const idx2 = varIndex.get(`${vName}|${s2}`)!;
+        constraints.push({ row: [idx1, idx2], val: [1, 1], lower: 0, upper: 1 });
+      }
+
+      if (settings.forbidBackToBack) {
+        for (const [s1, s2] of sequentialPairs) {
+          const idx1 = varIndex.get(`${vName}|${s1}`)!;
+          const idx2 = varIndex.get(`${vName}|${s2}`)!;
+          constraints.push({ row: [idx1, idx2], val: [1, 1], lower: 0, upper: 1 });
+        }
+      }
+    }
+
+    const lpConstraints: string[] = [];
+    let constraintNum = 0;
+
+    for (const c of constraints) {
+      const terms = c.row.map((idx, j) => `${c.val[j] >= 0 ? '+' : ''}${c.val[j]} x${idx}`).join(' ');
+
+      if (c.lower !== -Infinity && c.upper !== Infinity && c.lower === c.upper) {
+        lpConstraints.push(`c${constraintNum++}: ${terms} = ${c.lower}`);
+      } else {
         if (c.lower !== -Infinity) {
           lpConstraints.push(`c${constraintNum++}: ${terms} >= ${c.lower}`);
         }
@@ -406,11 +695,9 @@ End
     try {
       const result = highs.solve(problem);
 
-      // HiGHS returns "Optimal" for optimal solutions, "Time limit reached" for partial solutions
       if (result.Status === 'Optimal' || result.Status === 'Time limit reached') {
         const assignments: Assignment[] = [];
 
-        // Extract solution
         for (const vName of volunteerNames) {
           for (const sId of shiftIds) {
             const idx = varIndex.get(`${vName}|${sId}`)!;
@@ -424,25 +711,30 @@ End
 
         return {
           status: result.Status === 'Optimal' ? 'optimal' : 'feasible',
-          phase,
+          phase: 2,
           assignments,
-          message: `Phase ${phase} succeeded with ${assignments.length} assignments`
+          message: `Hard-fill phase succeeded with ${assignments.length} assignments`
         };
       } else {
         return {
           status: 'infeasible',
-          phase,
+          phase: 2,
           assignments: [],
-          message: `Phase ${phase} returned status: ${result.Status}`
+          message: `Hard-fill phase returned status: ${result.Status}`
         };
       }
     } catch (error) {
-      return {
-        status: 'error',
-        phase,
-        assignments: [],
-        message: `Solver error: ${error instanceof Error ? error.message : String(error)}`
-      };
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      // HiGHS crashes with Aborted() for infeasible problems
+      if (errorMsg.includes('Aborted')) {
+        return {
+          status: 'infeasible',
+          phase: 2,
+          assignments: [],
+          message: 'Infeasible at this relaxation level'
+        };
+      }
+      throw error;  // Re-throw unexpected errors
     }
   }
 }

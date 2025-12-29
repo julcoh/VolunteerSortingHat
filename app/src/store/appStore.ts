@@ -9,6 +9,7 @@ import type {
   VolunteerRoster,
   AuditData
 } from '../types';
+import { detectOptimalSettings } from '../lib/solver/feasibilityChecker';
 
 interface AppState {
   // Current step in the workflow
@@ -30,6 +31,15 @@ interface AppState {
     errors: string[];
     warnings: string[];
   }) => void;
+
+  // Update settings (for user adjustments on Review page)
+  updateSettings: (updates: Partial<Settings>) => void;
+
+  // Update individual volunteers (for editable table)
+  updateVolunteer: (name: string, updates: Partial<Pick<Volunteer, 'preAssignedPoints'>>) => void;
+
+  // Update individual shifts (for editable table)
+  updateShift: (id: string, updates: Partial<Pick<Shift, 'capacity' | 'points'>>) => void;
 
   // Clear data
   clearData: () => void;
@@ -53,8 +63,16 @@ interface AppState {
 const defaultSettings: Settings = {
   minPoints: 6,
   maxOver: 2,
-  seed: 42,
-  maxShifts: 999
+  maxShifts: 10,
+  forbidBackToBack: false,
+  backToBackGap: 2,
+  guaranteeLevel: 0,
+  allowRelaxation: false,
+  detectedGuarantee: 0,
+  detectedMinPoints: { min: 0, max: 10, recommended: 6 },
+  detectedMaxOver: { min: 0, max: 5, recommended: 2 },
+  detectedMaxShifts: { min: 1, max: 20, recommended: 10 },
+  seed: Math.floor(Math.random() * 1000000)
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -67,14 +85,53 @@ export const useAppStore = create<AppState>((set, get) => ({
   parseErrors: [],
   parseWarnings: [],
 
-  setData: (data) => set({
-    shifts: data.shifts,
-    volunteers: data.volunteers,
-    settings: data.settings,
-    parseErrors: data.errors,
-    parseWarnings: data.warnings,
-    step: data.errors.length === 0 ? 'review' : 'upload'
-  }),
+  setData: (data) => {
+    // Auto-detect optimal settings based on the data
+    let settings = { ...data.settings };
+
+    if (data.shifts.length > 0 && data.volunteers.length > 0) {
+      const detected = detectOptimalSettings(data.volunteers, data.shifts);
+
+      settings = {
+        ...settings,
+        // Apply detected values as defaults
+        minPoints: detected.minPoints,
+        maxOver: detected.maxOver,
+        maxShifts: detected.maxShifts,
+        guaranteeLevel: detected.guaranteeLevel,
+        // Store detected ranges for UI
+        detectedGuarantee: detected.guaranteeLevel,
+        detectedMinPoints: detected.minPointsRange,
+        detectedMaxOver: detected.maxOverRange,
+        detectedMaxShifts: detected.maxShiftsRange
+      };
+    }
+
+    set({
+      shifts: data.shifts,
+      volunteers: data.volunteers,
+      settings,
+      parseErrors: data.errors,
+      parseWarnings: data.warnings,
+      step: data.errors.length === 0 ? 'review' : 'upload'
+    });
+  },
+
+  updateSettings: (updates) => set((state) => ({
+    settings: { ...state.settings, ...updates }
+  })),
+
+  updateVolunteer: (name, updates) => set((state) => ({
+    volunteers: state.volunteers.map(v =>
+      v.name === name ? { ...v, ...updates } : v
+    )
+  })),
+
+  updateShift: (id, updates) => set((state) => ({
+    shifts: state.shifts.map(s =>
+      s.id === id ? { ...s, ...updates } : s
+    )
+  })),
 
   clearData: () => set({
     shifts: [],

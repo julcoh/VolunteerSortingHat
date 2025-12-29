@@ -67,35 +67,28 @@ export function parseExcelFile(buffer: ArrayBuffer): ParsedData {
   const warnings: string[] = [];
   const shifts: Shift[] = [];
   const volunteers: Volunteer[] = [];
-  let settings: Settings = {
+
+  // Default settings - will be auto-detected by store after parsing
+  const settings: Settings = {
     minPoints: 6,
     maxOver: 2,
-    seed: 42,
-    maxShifts: 999
+    maxShifts: 10,
+    forbidBackToBack: false,
+    backToBackGap: 2,
+    guaranteeLevel: 0,
+    allowRelaxation: false,  // Default OFF - fairness is more important than filling all shifts
+    detectedGuarantee: 0,
+    detectedMinPoints: { min: 0, max: 10, recommended: 6 },
+    detectedMaxOver: { min: 0, max: 5, recommended: 2 },
+    detectedMaxShifts: { min: 1, max: 20, recommended: 10 },
+    seed: Math.floor(Math.random() * 1000000)
   };
 
   try {
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
 
-    // Expected sheets: Shifts, Prefs, Settings
+    // Expected sheets: Shifts, Prefs
     const sheetNames = workbook.SheetNames;
-
-    // Parse Settings sheet
-    if (sheetNames.includes('Settings')) {
-      const settingsSheet = workbook.Sheets['Settings'];
-      const settingsData = XLSX.utils.sheet_to_json<Record<string, unknown>>(settingsSheet);
-      if (settingsData.length > 0) {
-        const row = settingsData[0];
-        settings = {
-          minPoints: Number(row['MIN_POINTS'] ?? row['MinPoints'] ?? 6),
-          maxOver: Number(row['MAX_OVER'] ?? row['MaxOver'] ?? 2),
-          seed: Number(row['SEED'] ?? row['Seed'] ?? 42),
-          maxShifts: Number(row['MAX_SHIFTS'] ?? row['MaxShifts'] ?? 999)
-        };
-      }
-    } else {
-      warnings.push('No Settings sheet found, using defaults (MIN_POINTS=6, MAX_OVER=2)');
-    }
 
     // Parse Shifts sheet
     if (sheetNames.includes('Shifts')) {
@@ -159,13 +152,14 @@ export function parseExcelFile(buffer: ArrayBuffer): ParsedData {
       const prefsSheet = workbook.Sheets['Prefs'];
       const prefsData = XLSX.utils.sheet_to_json<Record<string, unknown>>(prefsSheet);
 
-      // Get shift IDs from column headers (everything except Volunteer and MinPoints)
+      // Get shift IDs from column headers (everything except Volunteer and PreAssignedPoints)
       const headers = XLSX.utils.sheet_to_json<string[]>(prefsSheet, { header: 1 })[0] || [];
       const shiftIdColumns = headers
         .map((h, i) => ({ header: String(h), index: i }))
         .filter(({ header }) =>
           header !== 'Volunteer' &&
-          header !== 'MinPoints' &&
+          header !== 'PreAssignedPoints' &&
+          header !== 'MinPoints' &&  // Still filter out old column name for backwards compatibility
           header.trim() !== ''
         );
 
@@ -173,10 +167,13 @@ export function parseExcelFile(buffer: ArrayBuffer): ParsedData {
         const name = String(row['Volunteer'] ?? '').trim();
         if (!name) continue;
 
-        const minPointsVal = row['MinPoints'];
-        const minPoints = minPointsVal !== undefined && minPointsVal !== '' && minPointsVal !== null
-          ? Number(minPointsVal)
-          : undefined;
+        // Read PreAssignedPoints (default to 0 if not specified)
+        // Also check for old MinPoints column and convert: if they had MinPoints < globalMin,
+        // we can't perfectly convert without knowing globalMin, so just use 0
+        const preAssignedVal = row['PreAssignedPoints'];
+        const preAssignedPoints = preAssignedVal !== undefined && preAssignedVal !== '' && preAssignedVal !== null
+          ? Number(preAssignedVal)
+          : 0;
 
         const preferences = new Map<string, number>();
 
@@ -197,7 +194,7 @@ export function parseExcelFile(buffer: ArrayBuffer): ParsedData {
 
         volunteers.push({
           name,
-          minPoints,
+          preAssignedPoints,
           preferences
         });
       }

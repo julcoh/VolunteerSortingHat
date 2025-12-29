@@ -13,15 +13,36 @@ export interface Shift {
 
 export interface Volunteer {
   name: string;
-  minPoints?: number;  // Override global minimum if set
+  preAssignedPoints: number;  // Points already assigned outside this optimizer (default: 0)
   preferences: Map<string, number>;  // shiftId -> rank (1-5, lower is better)
 }
 
+export interface SettingsRange {
+  min: number;
+  max: number;
+  recommended: number;
+}
+
 export interface Settings {
-  minPoints: number;
-  maxOver: number;
-  seed: number;
-  maxShifts: number;
+  // Core settings (now in Advanced panel, auto-detected)
+  minPoints: number;      // Minimum points each volunteer must work
+  maxOver: number;        // Maximum points above minimum allowed
+  maxShifts: number;      // Maximum number of shifts per volunteer
+  forbidBackToBack: boolean;  // If true, back-to-back shifts are forbidden; if false, just penalized
+
+  // Advanced settings (shown in collapsible section)
+  backToBackGap: number;  // Hours between shifts to consider them "back-to-back" (default: 2)
+  guaranteeLevel: number; // Everyone gets at least one shift from their top N preferences (0 = no guarantee)
+  allowRelaxation: boolean; // If true, solver can relax constraints to fill all shifts; if false, fail instead
+
+  // Auto-detected values (set by system, shown to user)
+  detectedGuarantee: number;  // Best achievable guarantee level based on data
+  detectedMinPoints: SettingsRange;
+  detectedMaxOver: SettingsRange;
+  detectedMaxShifts: SettingsRange;
+
+  // Internal (not shown to user)
+  seed: number;           // Random seed for tie-breaking
 }
 
 export interface Assignment {
@@ -34,6 +55,15 @@ export interface SolverResult {
   phase: 1 | 2;
   assignments: Assignment[];
   message?: string;
+
+  // Relaxation info (only present if constraints were relaxed in Phase 2)
+  relaxation?: {
+    level: 'relaxed-points' | 'minimal';
+    minPointsMultiplier: number;  // 0.5 for relaxed-points, 0 for minimal
+    maxShiftsMultiplier: number;  // 1.5 for relaxed-points, 2.0 for minimal
+    originalMinPoints: number;    // The original target
+    originalMaxShifts: number;    // The original limit
+  };
 }
 
 // For displaying results

@@ -26,3 +26,10 @@ app/test-*.mjs
 
 # Previous data (contains real volunteer info)
 PreviousData/
+
+# Claude Code settings (user-specific permissions)
+.claude/
+
+# Project tracking files (not for public repo)
+fruitPOPChangesSummary.md
+IMPROVEMENTS_TODO.md

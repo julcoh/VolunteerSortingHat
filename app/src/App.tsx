@@ -3,6 +3,7 @@ import { FileUpload } from './components/FileUpload';
 import { DataReview } from './components/DataReview';
 import { SolvingProgress } from './components/SolvingProgress';
 import { Results } from './components/Results';
+import { VERSION } from './version';
 
 function App() {
   const { step } = useAppStore();
@@ -66,8 +67,9 @@ function App() {
 
       {/* Footer */}
       <footer className="bg-white border-t border-gray-200 mt-auto">
-        <div className="max-w-6xl mx-auto px-6 py-4 text-center text-gray-500 text-sm">
-          Shift Sorting Hat - Fair shift assignments through optimization
+        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center text-gray-500 text-sm">
+          <span>Shift Sorting Hat - Fair shift assignments through optimization</span>
+          <span className="text-gray-400">v{VERSION}</span>
         </div>
       </footer>
     </div>

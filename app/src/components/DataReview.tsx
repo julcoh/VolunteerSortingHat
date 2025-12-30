@@ -35,6 +35,9 @@ export function DataReview() {
     setSolverStatus('running');
     clearSolverProgress();
 
+    // Yield to browser to render the solving screen before starting the solver
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     try {
       const result = await solveShiftAssignment({
         shifts,

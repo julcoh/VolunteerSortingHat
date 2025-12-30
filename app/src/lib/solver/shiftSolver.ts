@@ -445,6 +445,7 @@ End
 
     try {
       const result = highs.solve(problem);
+      console.log(`HiGHS result status: ${result.Status}`);
 
       if (result.Status === 'Optimal' || result.Status === 'Time limit reached') {
         const assignments: Assignment[] = [];
@@ -478,14 +479,18 @@ End
       const errorMsg = error instanceof Error ? error.message : String(error);
 
       // HiGHS WASM can crash with various errors when problem is infeasible or solver fails
-      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds') || errorMsg.includes('signature mismatch')) {
-        console.warn('HiGHS error (treating as infeasible):', errorMsg);
+      console.error('HiGHS solve error:', errorMsg);
+      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds')) {
         return {
           status: 'infeasible',
           phase: 1,
           assignments: [],
           message: `Infeasible at target avg ${targetAvg.toFixed(2)}`
         };
+      }
+      // Don't silently swallow signature mismatch - let it throw so we can debug
+      if (errorMsg.includes('signature mismatch')) {
+        throw new Error(`HiGHS WASM error: ${errorMsg}. This may be a browser compatibility issue.`);
       }
 
       // Re-throw unexpected errors
@@ -692,6 +697,7 @@ End
 
     try {
       const result = highs.solve(problem);
+      console.log(`HiGHS result status: ${result.Status}`);
 
       if (result.Status === 'Optimal' || result.Status === 'Time limit reached') {
         const assignments: Assignment[] = [];
@@ -724,14 +730,17 @@ End
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       // HiGHS WASM can crash with various errors when problem is infeasible or solver fails
-      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds') || errorMsg.includes('signature mismatch')) {
-        console.warn('HiGHS error in Phase 2 (treating as infeasible):', errorMsg);
+      console.error('HiGHS Phase 2 solve error:', errorMsg);
+      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds')) {
         return {
           status: 'infeasible',
           phase: 2,
           assignments: [],
           message: 'Infeasible at this relaxation level'
         };
+      }
+      if (errorMsg.includes('signature mismatch')) {
+        throw new Error(`HiGHS WASM error: ${errorMsg}. This may be a browser compatibility issue.`);
       }
       throw error;  // Re-throw unexpected errors
     }

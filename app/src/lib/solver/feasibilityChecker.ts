@@ -217,27 +217,27 @@ export function detectOptimalSettings(
   const avgShiftsPerPerson = totalCapacity / numVolunteers;
 
   // ===== MIN POINTS =====
-  // FAIRNESS PRIORITY: Use a higher minPoints (closer to fair share) so everyone
-  // does similar work. Use 90% of fair share - leaves some room for constraints.
-  const conservativeFairShare = fairShare * 0.9;
+  // CONSERVATIVE: Use 75% of fair share to leave room for constraint satisfaction.
+  // This helps ensure the solver can find solutions with complex preference structures.
+  const conservativeFairShare = fairShare * 0.75;
   const recommendedMinPoints = Math.floor(conservativeFairShare * 2) / 2;  // Round down to nearest 0.5
   const minPointsMin = 0;
   const minPointsMax = Math.floor(fairShare);  // Theoretical max
 
   // ===== MAX OVER =====
-  // FAIRNESS PRIORITY: Minimize maxOver to keep everyone's workload similar.
-  // Only allow the minimum slack needed to make the problem solvable.
+  // CONSERVATIVE: Allow generous slack for flexibility in constraint satisfaction.
+  // More flexibility = more likely to find a valid solution.
   const slack = totalAvailablePoints - (numVolunteers * recommendedMinPoints);
   const slackPerPerson = slack / numVolunteers;
 
-  // Minimal maxOver: just enough for one small shift of flexibility
-  // This keeps workloads tight and fair
+  // Allow 1.5-2 points of flexibility, or proportional to available slack
   const recommendedMaxOver = Math.max(
-    minShiftPoints,  // At least one small shift of flexibility (minimum needed)
-    Math.ceil(slackPerPerson * 0.5)  // Half the slack - tight but achievable
+    1.5,  // Minimum flexibility
+    minShiftPoints,  // At least one small shift of flexibility
+    Math.ceil(slackPerPerson * 2) / 2  // Round to nearest 0.5, generous slack allowance
   );
   const maxOverMin = 0;
-  const maxOverMax = Math.max(Math.ceil(slackPerPerson * 2), maxShiftPoints * 2);
+  const maxOverMax = Math.max(Math.ceil(slackPerPerson * 3), maxShiftPoints * 3);
 
   // ===== MAX SHIFTS =====
   // How many shifts would someone need to reach their max points?

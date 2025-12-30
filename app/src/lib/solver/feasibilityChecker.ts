@@ -217,25 +217,17 @@ export function detectOptimalSettings(
   const avgShiftsPerPerson = totalCapacity / numVolunteers;
 
   // ===== MIN POINTS =====
-  // CONSERVATIVE: Use 75% of fair share to leave room for constraint satisfaction.
-  // This helps ensure the solver can find solutions with complex preference structures.
-  const conservativeFairShare = fairShare * 0.75;
+  // Use 85% of fair share - balances fairness with constraint flexibility.
+  const conservativeFairShare = fairShare * 0.85;
   const recommendedMinPoints = Math.floor(conservativeFairShare * 2) / 2;  // Round down to nearest 0.5
   const minPointsMin = 0;
   const minPointsMax = Math.floor(fairShare);  // Theoretical max
 
   // ===== MAX OVER =====
-  // CONSERVATIVE: Allow generous slack for flexibility in constraint satisfaction.
-  // More flexibility = more likely to find a valid solution.
+  // Default to 1.5 points over minimum - keeps workloads tight and fair.
+  const recommendedMaxOver = 1.5;
   const slack = totalAvailablePoints - (numVolunteers * recommendedMinPoints);
   const slackPerPerson = slack / numVolunteers;
-
-  // Allow 1.5-2 points of flexibility, or proportional to available slack
-  const recommendedMaxOver = Math.max(
-    1.5,  // Minimum flexibility
-    minShiftPoints,  // At least one small shift of flexibility
-    Math.ceil(slackPerPerson * 2) / 2  // Round to nearest 0.5, generous slack allowance
-  );
   const maxOverMin = 0;
   const maxOverMax = Math.max(Math.ceil(slackPerPerson * 3), maxShiftPoints * 3);
 

@@ -8,49 +8,51 @@ interface HighsSolver {
   };
 }
 
-// Cache the loaded solver
-let cachedHighs: HighsSolver | null = null;
-let loadingPromise: Promise<HighsSolver> | null = null;
+// Track if script is loaded (but create fresh solver instances)
+let scriptLoaded = false;
+let scriptLoadingPromise: Promise<void> | null = null;
 
-// Load HiGHS from CDN (browser-compatible approach)
+// Load HiGHS from CDN - creates a fresh instance each time to avoid WASM state corruption
 async function loadHighs(): Promise<HighsSolver> {
-  if (cachedHighs) return cachedHighs;
-  if (loadingPromise) return loadingPromise;
+  const CDN_BASE = 'https://lovasoa.github.io/highs-js';
 
-  loadingPromise = (async () => {
-    const CDN_BASE = 'https://lovasoa.github.io/highs-js';
-
-    // Load the HiGHS script from CDN
-    await new Promise<void>((resolve, reject) => {
+  // Load the script once
+  if (!scriptLoaded && !scriptLoadingPromise) {
+    scriptLoadingPromise = new Promise<void>((resolve, reject) => {
       // Check if already loaded
-      if ((window as unknown as Record<string, unknown>).Module) {
+      if ((window as unknown as Record<string, unknown>).highs_loader) {
+        scriptLoaded = true;
         resolve();
         return;
       }
 
       const script = document.createElement('script');
       script.src = `${CDN_BASE}/highs.js`;
-      script.onload = () => resolve();
+      script.onload = () => {
+        scriptLoaded = true;
+        resolve();
+      };
       script.onerror = () => reject(new Error('Failed to load HiGHS from CDN'));
       document.head.appendChild(script);
     });
+  }
 
-    // The CDN script exports 'Module' (Emscripten pattern)
-    const Module = (window as unknown as Record<string, unknown>).Module;
-    if (typeof Module !== 'function') {
-      throw new Error('HiGHS Module not found on window after script load');
-    }
+  if (scriptLoadingPromise) {
+    await scriptLoadingPromise;
+  }
 
-    // Initialize the solver with WASM location
-    const solver = await (Module as (opts: { locateFile: (f: string) => string }) => Promise<HighsSolver>)({
-      locateFile: (file: string) => `${CDN_BASE}/${file}`
-    });
+  // The CDN script exports 'Module' (Emscripten pattern)
+  const Module = (window as unknown as Record<string, unknown>).Module;
+  if (typeof Module !== 'function') {
+    throw new Error('HiGHS Module not found on window after script load');
+  }
 
-    cachedHighs = solver;
-    return solver;
-  })();
+  // Create a fresh solver instance each time to avoid WASM state corruption
+  const solver = await (Module as (opts: { locateFile: (f: string) => string }) => Promise<HighsSolver>)({
+    locateFile: (file: string) => `${CDN_BASE}/${file}`
+  });
 
-  return loadingPromise;
+  return solver;
 }
 
 // Random number generator with seed
@@ -480,8 +482,8 @@ End
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
 
-      // HiGHS WASM crashes with Aborted() when problem is infeasible
-      if (errorMsg.includes('Aborted')) {
+      // HiGHS WASM can crash with various errors when problem is infeasible or solver fails
+      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds')) {
         return {
           status: 'infeasible',
           phase: 1,
@@ -725,8 +727,8 @@ End
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      // HiGHS crashes with Aborted() for infeasible problems
-      if (errorMsg.includes('Aborted')) {
+      // HiGHS WASM can crash with various errors when problem is infeasible or solver fails
+      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds')) {
         return {
           status: 'infeasible',
           phase: 2,

@@ -1,27 +1,50 @@
 import type { Shift, Volunteer, Settings, SolverResult, Assignment } from '../../types';
-import highsLoader, { type Highs } from 'highs';
 
-// Cache the solver instance
-let cachedHighs: Highs | null = null;
-let loadingPromise: Promise<Highs> | null = null;
+// HiGHS solver interface
+interface HighsSolver {
+  solve: (problem: string) => {
+    Status: string;
+    Columns: Record<string, { Primal?: number }>;
+  };
+}
 
-// Load HiGHS - configure to find WASM file at root
-async function loadHighs(): Promise<Highs> {
+const CDN_BASE = 'https://lovasoa.github.io/highs-js';
+let cachedHighs: HighsSolver | null = null;
+let loadingPromise: Promise<HighsSolver> | null = null;
+
+// Load HiGHS from CDN - cache the instance
+async function loadHighs(): Promise<HighsSolver> {
   if (cachedHighs) return cachedHighs;
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
-    // Configure locateFile to find WASM at root (copied from public folder)
-    const highs = await highsLoader({
-      locateFile: (file: string) => {
-        if (file.endsWith('.wasm')) {
-          return '/' + file;
-        }
-        return file;
+    // Load the script
+    await new Promise<void>((resolve, reject) => {
+      if ((window as unknown as Record<string, unknown>).Module) {
+        resolve();
+        return;
       }
+      const script = document.createElement('script');
+      script.src = `${CDN_BASE}/highs.js`;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load HiGHS from CDN'));
+      document.head.appendChild(script);
     });
-    cachedHighs = highs;
-    return highs;
+
+    // Initialize the solver
+    const Module = (window as unknown as Record<string, unknown>).Module as
+      (opts: { locateFile: (f: string) => string }) => Promise<HighsSolver>;
+
+    if (typeof Module !== 'function') {
+      throw new Error('HiGHS Module not found');
+    }
+
+    const solver = await Module({
+      locateFile: (file: string) => `${CDN_BASE}/${file}`
+    });
+
+    cachedHighs = solver;
+    return solver;
   })();
 
   return loadingPromise;
@@ -455,7 +478,8 @@ End
       const errorMsg = error instanceof Error ? error.message : String(error);
 
       // HiGHS WASM can crash with various errors when problem is infeasible or solver fails
-      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds')) {
+      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds') || errorMsg.includes('signature mismatch')) {
+        console.warn('HiGHS error (treating as infeasible):', errorMsg);
         return {
           status: 'infeasible',
           phase: 1,
@@ -700,7 +724,8 @@ End
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       // HiGHS WASM can crash with various errors when problem is infeasible or solver fails
-      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds')) {
+      if (errorMsg.includes('Aborted') || errorMsg.includes('table index') || errorMsg.includes('out of bounds') || errorMsg.includes('signature mismatch')) {
+        console.warn('HiGHS error in Phase 2 (treating as infeasible):', errorMsg);
         return {
           status: 'infeasible',
           phase: 2,

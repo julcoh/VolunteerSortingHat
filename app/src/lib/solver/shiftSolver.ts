@@ -1,17 +1,25 @@
 import type { Shift, Volunteer, Settings, SolverResult, Assignment } from '../../types';
 import highsLoader, { type Highs } from 'highs';
 
-// Cache the solver instance - the npm package handles WASM properly
+// Cache the solver instance
 let cachedHighs: Highs | null = null;
 let loadingPromise: Promise<Highs> | null = null;
 
-// Load HiGHS using the npm package
+// Load HiGHS - configure to find WASM file at root
 async function loadHighs(): Promise<Highs> {
   if (cachedHighs) return cachedHighs;
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
-    const highs = await highsLoader();
+    // Configure locateFile to find WASM at root (copied from public folder)
+    const highs = await highsLoader({
+      locateFile: (file: string) => {
+        if (file.endsWith('.wasm')) {
+          return '/' + file;
+        }
+        return file;
+      }
+    });
     cachedHighs = highs;
     return highs;
   })();

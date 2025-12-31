@@ -215,12 +215,16 @@ export function Results() {
   }, [solverResult, volunteerRosters, auditData, volunteers, settings]);
 
   const rankCounts = [0, 0, 0, 0, 0];
+  let volunteersWithTop3 = 0;
   for (const roster of volunteerRosters) {
+    let gotTop3 = false;
     for (let i = 0; i < 5; i++) {
       if (roster.rankHits[i] > 0) {
         rankCounts[i]++;
+        if (i < 3) gotTop3 = true;
       }
     }
+    if (gotTop3) volunteersWithTop3++;
   }
 
   const exportToExcel = () => {
@@ -390,9 +394,23 @@ export function Results() {
             <div className="text-3xl font-bold text-purple-600">{volunteers.length}</div>
             <div className="text-gray-500">Volunteers Assigned</div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-            <div className="text-3xl font-bold text-orange-600">Phase {solverResult?.phase}</div>
-            <div className="text-gray-500">Solution Phase</div>
+          <div className={`border rounded-lg p-5 shadow-sm ${
+            solverResult?.phase === 1
+              ? 'bg-green-50 border-green-200'
+              : 'bg-yellow-50 border-yellow-200'
+          }`}>
+            <div className={`text-xl font-bold ${
+              solverResult?.phase === 1 ? 'text-green-700' : 'text-yellow-700'
+            }`}>
+              {solverResult?.phase === 1 ? 'Optimal' : 'Fallback Used'}
+            </div>
+            <div className={`text-sm mt-1 ${
+              solverResult?.phase === 1 ? 'text-green-600' : 'text-yellow-600'
+            }`}>
+              {solverResult?.phase === 1
+                ? 'All shifts filled from preferences'
+                : 'Some shifts needed non-preferred volunteers'}
+            </div>
           </div>
 
           {/* Fairness Metrics */}
@@ -505,26 +523,46 @@ export function Results() {
             </div>
           )}
 
-          {/* Preference Satisfaction */}
-          <div className="col-span-full bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4">Preference Satisfaction by Rank</h3>
-            <p className="text-sm text-gray-500 mb-4">Number of volunteers who got at least one shift at each rank:</p>
-            <div className="flex gap-4">
-              {rankCounts.map((count, i) => (
-                <div key={i} className="flex-1 text-center">
-                  <div className="text-2xl font-bold" style={{
-                    color: i === 0 ? '#22c55e' : i === 1 ? '#84cc16' : i === 2 ? '#eab308' : i === 3 ? '#f97316' : '#ef4444'
-                  }}>
-                    {count}
+          {/* Overall Satisfaction */}
+          {metrics && (
+            <div className="col-span-full bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-700 mb-4">Overall Satisfaction</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Happiness Score */}
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-green-600">
+                    {Math.round((metrics.overallAvgSatPerShift / 5) * 100)}%
                   </div>
-                  <div className="text-sm text-gray-500">Rank {i + 1}</div>
-                  <div className="text-xs text-gray-400">
-                    ({volunteers.length > 0 ? Math.round(count / volunteers.length * 100) : 0}%)
+                  <div className="text-sm text-gray-600 mt-1">Happiness Score</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    100% = everyone got only #1 picks, 0% = no one got any top-5 picks
                   </div>
                 </div>
-              ))}
+
+                {/* Top Choice Stats */}
+                <div className="text-center border-l border-r border-gray-100 px-4">
+                  <div className="text-4xl font-bold text-blue-600">
+                    {volunteers.length > 0 ? Math.round((rankCounts[0] / volunteers.length) * 100) : 0}%
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">Got Their #1 Choice</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {rankCounts[0]} of {volunteers.length} volunteers
+                  </div>
+                </div>
+
+                {/* Top 3 Stats */}
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-purple-600">
+                    {volunteers.length > 0 ? Math.round((volunteersWithTop3 / volunteers.length) * 100) : 0}%
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">Got a Top-3 Choice</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {volunteersWithTop3} of {volunteers.length} volunteers
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Warnings Section */}
           {volunteerWarnings.length > 0 && (

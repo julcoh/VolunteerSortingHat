@@ -50,6 +50,17 @@ export interface Assignment {
   shiftId: string;
 }
 
+export interface InfeasibilityIssue {
+  type: string;
+  description: string;
+  suggestion: string;
+}
+
+export interface InfeasibilityDiagnosis {
+  summary: string;
+  issues: InfeasibilityIssue[];
+}
+
 export interface SolverResult {
   status: 'optimal' | 'feasible' | 'infeasible' | 'error';
   phase: 1 | 2;
@@ -64,6 +75,9 @@ export interface SolverResult {
     originalMinPoints: number;    // The original target
     originalMaxShifts: number;    // The original limit
   };
+
+  // Infeasibility diagnosis (only present when status is 'infeasible')
+  infeasibilityDiagnosis?: InfeasibilityDiagnosis;
 }
 
 // For displaying results

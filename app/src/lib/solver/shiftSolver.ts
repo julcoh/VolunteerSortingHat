@@ -84,16 +84,33 @@ function shiftsSequential(s1: Shift, s2: Shift, gapHours: number): boolean {
   return gap >= 0 && gap <= gapMs;
 }
 
+interface ProgressInfo {
+  message: string;
+  phase?: 1 | 2;
+  phaseLabel?: string;
+  progress?: number; // 0-100 percentage
+}
+
 interface SolverInput {
   shifts: Shift[];
   volunteers: Volunteer[];
   settings: Settings;
-  onProgress?: (message: string) => void;
+  onProgress?: (message: string | ProgressInfo) => void;
 }
 
 export async function solveShiftAssignment(input: SolverInput): Promise<SolverResult> {
   const { shifts, volunteers, settings, onProgress } = input;
-  const log = onProgress || console.log;
+  const rawLog = onProgress || console.log;
+
+  // Helper to send progress with phase info
+  const log = (msg: string, phase?: 1 | 2, phaseLabel?: string, progress?: number) => {
+    rawLog({
+      message: msg,
+      phase,
+      phaseLabel,
+      progress
+    });
+  };
 
   const rand = new SeededRandom(settings.seed);
   const shiftIds = shifts.map(s => s.id);
@@ -130,9 +147,9 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
     }
   }
 
-  log(`Found ${overlappingPairs.length} overlapping shift pairs`);
-  log(`Found ${sequentialPairs.length} sequential shift pairs`);
-  log(`Guarantee level: ${settings.guaranteeLevel > 0 ? `Top ${settings.guaranteeLevel}` : 'None (at least 1 shift)'}`);
+  log(`Found ${overlappingPairs.length} overlapping shift pairs`, 1, 'Analyzing Data', 5);
+  log(`Found ${sequentialPairs.length} sequential shift pairs`, 1, 'Analyzing Data', 10);
+  log(`Guarantee level: ${settings.guaranteeLevel > 0 ? `Top ${settings.guaranteeLevel}` : 'None (at least 1 shift)'}`, 1, 'Analyzing Data', 15);
 
   // Get preference rank (infinity if not ranked)
   function getRank(volName: string, shiftId: string): number {
@@ -152,7 +169,8 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
   const highs = await loadHighs();
 
   // ========== MAIN OPTIMIZATION ==========
-  log('Running egalitarian optimization with guarantee constraints...');
+  log('Running egalitarian optimization with guarantee constraints...', 1, 'Optimizing', 20);
+  log('Loading HiGHS solver...', 1, 'Optimizing', 25);
 
   const result = await runEgalitarianSolver();
 
@@ -168,19 +186,19 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
       const assigned = assignmentCounts.get(shift.id) ?? 0;
       if (assigned < shift.capacity) {
         allFilled = false;
-        log(`Shift ${shift.id} underfilled: ${assigned}/${shift.capacity}`);
+        log(`Shift ${shift.id} underfilled: ${assigned}/${shift.capacity}`, 1, 'Validating', 90);
       }
     }
 
     if (allFilled) {
-      log('All shifts fully staffed!');
+      log('All shifts fully staffed!', 1, 'Complete', 100);
       return result;
     } else {
-      log('Some shifts underfilled, running hard-fill phase...');
+      log('Some shifts underfilled, running hard-fill phase...', 2, 'Hard-Fill Phase', 0);
       return await runHardFillPhase(result.assignments);
     }
   } else {
-    log('Egalitarian optimization failed, trying hard-fill approach...');
+    log('Egalitarian optimization failed, trying hard-fill approach...', 2, 'Hard-Fill Phase', 0);
     return await runHardFillPhase([]);
   }
 
@@ -188,7 +206,7 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
   // Uses binary search to find the maximum achievable minimum AVERAGE satisfaction per shift
   // This ensures proportional fairness: volunteers with fewer shifts get similar quality
   async function runEgalitarianSolver(): Promise<SolverResult> {
-    log('Using average satisfaction optimization for proportional fairness...');
+    log('Using average satisfaction optimization for proportional fairness...', 1, 'Optimizing', 30);
 
     // Binary search for maximum achievable minimum average satisfaction
     // Range: 0 to 5 (max possible avg if all rank 1)
@@ -197,10 +215,15 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
     let bestResult: SolverResult | null = null;
     let bestAvg = 0;
     const tolerance = 0.1;
+    let iteration = 0;
+    const maxIterations = Math.ceil(Math.log2(5 / tolerance)); // ~6 iterations
 
     while (high - low > tolerance) {
+      iteration++;
       const targetAvg = (low + high) / 2;
-      log(`Trying target average satisfaction: ${targetAvg.toFixed(2)}`);
+      // Progress from 30% to 80% during binary search
+      const progress = 30 + Math.round((iteration / maxIterations) * 50);
+      log(`Trying target average satisfaction: ${targetAvg.toFixed(2)}`, 1, 'Binary Search', progress);
 
       const result = await tryWithTargetAverage(targetAvg);
 
@@ -216,7 +239,7 @@ export async function solveShiftAssignment(input: SolverInput): Promise<SolverRe
     }
 
     if (bestResult) {
-      log(`Achieved minimum average satisfaction: ${bestAvg.toFixed(2)} per shift`);
+      log(`Achieved minimum average satisfaction: ${bestAvg.toFixed(2)} per shift`, 1, 'Optimizing', 85);
       bestResult.message = `Optimization succeeded. Min avg satisfaction: ${bestAvg.toFixed(2)}/shift`;
       return bestResult;
     }
@@ -500,7 +523,7 @@ End
 
   // ========== Hard Fill Phase (for unfilled shifts) ==========
   async function runHardFillPhase(existingAssignments: Assignment[]): Promise<SolverResult> {
-    log('Running hard-fill phase to ensure all shifts are staffed...');
+    log('Running hard-fill phase to ensure all shifts are staffed...', 2, 'Hard-Fill Phase', 10);
 
     // Define relaxation levels - only used if allowRelaxation is true
     const relaxationLevels: Array<{
@@ -517,9 +540,13 @@ End
       { name: 'full', minPointsMultiplier: 1.0, maxShiftsMultiplier: 1.0, maxPointsMultiplier: 1.0 },
     ];
 
-    for (const level of relaxationLevels) {
+    for (let i = 0; i < relaxationLevels.length; i++) {
+      const level = relaxationLevels[i];
+      const progressBase = 20 + Math.round((i / relaxationLevels.length) * 60);
+      log(`Trying ${level.name} constraints...`, 2, 'Hard-Fill Phase', progressBase);
       const result = await tryHardFill(level.minPointsMultiplier, level.maxShiftsMultiplier, level.maxPointsMultiplier);
       if (result.status === 'optimal' || result.status === 'feasible') {
+        log(`Hard-fill succeeded with ${level.name} constraints`, 2, 'Complete', 100);
         if (level.name !== 'full') {
           result.message += ` (used ${level.name} constraints)`;
           // Add relaxation details so the UI can show warnings
@@ -533,24 +560,157 @@ End
         }
         return result;
       }
-      log(`Hard-fill with ${level.name} constraints failed, trying next level...`);
+      log(`Hard-fill with ${level.name} constraints failed, trying next level...`, 2, 'Hard-Fill Phase', progressBase + 10);
     }
 
-    // All attempts failed
-    if (settings.forbidBackToBack) {
-      return {
-        status: 'infeasible',
-        phase: 2,
-        assignments: existingAssignments,
-        message: `Unable to fill all shifts with "Forbid back-to-back" enabled. The shift schedule may require some volunteers to work consecutive shifts. Try using "Minimize" instead.`
-      };
-    }
+    // All attempts failed - perform diagnosis (#015)
+    log('Analyzing infeasibility...', 2, 'Diagnosing', 95);
+    const diagnosis = diagnoseInfeasibility();
+
     return {
       status: 'infeasible',
       phase: 2,
       assignments: existingAssignments,
-      message: `Unable to fill all shifts. There may not be enough volunteers to cover all shift capacity, or too many overlapping shifts create scheduling conflicts.`
+      message: diagnosis.summary,
+      infeasibilityDiagnosis: diagnosis
     };
+  }
+
+  // Diagnose why the problem is infeasible (#015)
+  function diagnoseInfeasibility(): {
+    summary: string;
+    issues: { type: string; description: string; suggestion: string }[];
+  } {
+    const issues: { type: string; description: string; suggestion: string }[] = [];
+
+    // 1. Check capacity vs. volunteers
+    const totalCapacity = shifts.reduce((sum, s) => sum + s.capacity, 0);
+
+    if (totalCapacity > volunteers.length * settings.maxShifts) {
+      issues.push({
+        type: 'capacity_excess',
+        description: `Total shift capacity (${totalCapacity}) exceeds what volunteers can cover (${volunteers.length} volunteers × ${settings.maxShifts} max shifts = ${volunteers.length * settings.maxShifts} slots).`,
+        suggestion: 'Add more volunteers, increase max shifts per person, or reduce shift capacity.'
+      });
+    }
+
+    // 2. Check points balance
+    const totalPoints = shifts.reduce((sum, s) => sum + s.capacity * s.points, 0);
+    const minPointsNeeded = volunteers.reduce((sum, v) => sum + Math.max(0, settings.minPoints - v.preAssignedPoints), 0);
+    const maxPointsAllowed = volunteers.reduce((sum, v) => sum + Math.max(0, settings.minPoints - v.preAssignedPoints) + settings.maxOver, 0);
+
+    if (totalPoints < minPointsNeeded) {
+      issues.push({
+        type: 'points_shortage',
+        description: `Total available points (${totalPoints.toFixed(1)}) is less than minimum required (${minPointsNeeded.toFixed(1)}).`,
+        suggestion: 'Lower the minimum points requirement, add more shifts, or increase shift point values.'
+      });
+    }
+
+    if (totalPoints > maxPointsAllowed * 1.5) {
+      issues.push({
+        type: 'points_excess',
+        description: `Total points (${totalPoints.toFixed(1)}) far exceeds what volunteers can accept (max: ${maxPointsAllowed.toFixed(1)}).`,
+        suggestion: 'Increase max points over minimum, add more volunteers, or reduce shift point values.'
+      });
+    }
+
+    // 3. Check overlapping shifts
+    const maxConcurrentCapacity = calculateMaxConcurrentCapacity();
+    if (maxConcurrentCapacity > volunteers.length) {
+      issues.push({
+        type: 'concurrent_overlap',
+        description: `At some times, overlapping shifts require ${maxConcurrentCapacity} volunteers simultaneously, but only ${volunteers.length} are available.`,
+        suggestion: 'Stagger shift times, reduce capacity of overlapping shifts, or add more volunteers.'
+      });
+    }
+
+    // 4. Check back-to-back constraint
+    if (settings.forbidBackToBack && sequentialPairs.length > 0) {
+      // Check if there are too many sequential constraints
+      const avgSequentialPerShift = (sequentialPairs.length * 2) / shifts.length;
+      if (avgSequentialPerShift > 2) {
+        issues.push({
+          type: 'back_to_back_tight',
+          description: `With back-to-back shifts forbidden, the dense schedule creates ${sequentialPairs.length} sequential constraints that severely limit volunteer assignment options.`,
+          suggestion: 'Switch from "Forbid" to "Minimize" back-to-back shifts, or add gaps between consecutive shifts.'
+        });
+      }
+    }
+
+    // 5. Check preference coverage for guarantee
+    if (settings.guaranteeLevel > 0) {
+      let volunteersWithNoEligibleShifts = 0;
+      let volunteersWithFewOptions = 0;
+
+      for (const vol of volunteers) {
+        const eligibleShifts = [...vol.preferences.entries()]
+          .filter(([, rank]) => rank <= settings.guaranteeLevel)
+          .map(([sId]) => sId);
+
+        if (eligibleShifts.length === 0) {
+          volunteersWithNoEligibleShifts++;
+        } else {
+          // Check if eligible shifts have enough capacity for this volunteer
+          const eligibleCapacity = eligibleShifts.reduce((sum, sId) => {
+            const shift = shiftById.get(sId);
+            return sum + (shift?.capacity || 0);
+          }, 0);
+          if (eligibleCapacity < 2) {
+            volunteersWithFewOptions++;
+          }
+        }
+      }
+
+      if (volunteersWithNoEligibleShifts > 0) {
+        issues.push({
+          type: 'guarantee_impossible',
+          description: `${volunteersWithNoEligibleShifts} volunteer(s) have no shifts ranked in their top ${settings.guaranteeLevel}, making the guarantee impossible.`,
+          suggestion: `Lower the guarantee level (currently: Top ${settings.guaranteeLevel}), or ensure all volunteers rank at least one available shift in their top ${settings.guaranteeLevel}.`
+        });
+      }
+
+      if (volunteersWithFewOptions > 5) {
+        issues.push({
+          type: 'guarantee_bottleneck',
+          description: `${volunteersWithFewOptions} volunteers have very limited options for their top ${settings.guaranteeLevel} preferences, creating bottlenecks.`,
+          suggestion: 'Encourage volunteers to diversify their top preferences, or lower the guarantee level.'
+        });
+      }
+    }
+
+    // Generate summary
+    let summary = 'Unable to find a valid assignment. ';
+    if (issues.length === 0) {
+      summary += 'The combination of constraints may be too restrictive. Try enabling constraint relaxation or adjusting settings.';
+    } else if (issues.length === 1) {
+      summary += issues[0].description;
+    } else {
+      summary += `Found ${issues.length} potential issues: ` + issues.map(i => i.type.replace(/_/g, ' ')).join(', ') + '.';
+    }
+
+    return { summary, issues };
+  }
+
+  // Calculate maximum concurrent capacity needed at any point in time
+  function calculateMaxConcurrentCapacity(): number {
+    // Get all shift time boundaries
+    const events: { time: number; delta: number }[] = [];
+    for (const shift of shifts) {
+      events.push({ time: shift.startTime.getTime(), delta: shift.capacity });
+      events.push({ time: shift.endTime.getTime(), delta: -shift.capacity });
+    }
+
+    events.sort((a, b) => a.time - b.time);
+
+    let current = 0;
+    let max = 0;
+    for (const event of events) {
+      current += event.delta;
+      max = Math.max(max, current);
+    }
+
+    return max;
   }
 
   async function tryHardFill(minPointsMultiplier: number, maxShiftsMultiplier: number, maxPointsMultiplier: number): Promise<SolverResult> {

@@ -51,11 +51,11 @@ interface AppState {
 
   // Solver state
   solverStatus: 'idle' | 'running' | 'complete' | 'error';
-  solverProgress: string[];
+  solverProgress: (string | { message: string; phase?: number; phaseLabel?: string; progress?: number })[];
   solverResult: SolverResult | null;
 
   setSolverStatus: (status: 'idle' | 'running' | 'complete' | 'error') => void;
-  addSolverProgress: (message: string) => void;
+  addSolverProgress: (message: string | { message: string; phase?: number; phaseLabel?: string; progress?: number }) => void;
   clearSolverProgress: () => void;
   setSolverResult: (result: SolverResult | null) => void;
 
@@ -80,16 +80,15 @@ const defaultSettings: Settings = {
   seed: Math.floor(Math.random() * 1000000)
 };
 
-// Initialize dark mode from localStorage or system preference
+// Initialize dark mode from localStorage (default: light mode)
 const getInitialDarkMode = (): boolean => {
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('darkMode');
     if (stored !== null) {
       return stored === 'true';
     }
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
-  return false;
+  return false; // Default to light mode
 };
 
 export const useAppStore = create<AppState>((set, get) => ({

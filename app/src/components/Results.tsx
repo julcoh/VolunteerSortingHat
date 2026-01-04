@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useAppStore } from '../store/appStore';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 type Tab = 'shifts' | 'roster' | 'audit' | 'summary';
 
@@ -227,10 +229,131 @@ export function Results() {
     if (gotTop3) volunteersWithTop3++;
   }
 
+  // Calculate preference distribution histogram data
+  // Shows how many assignments came from each rank (total across all volunteers)
+  const preferenceHistogram = useMemo(() => {
+    const histogram = {
+      rank1: 0,
+      rank2: 0,
+      rank3: 0,
+      rank4: 0,
+      rank5: 0,
+      unranked: 0
+    };
+
+    for (const roster of volunteerRosters) {
+      histogram.rank1 += roster.rankHits[0];
+      histogram.rank2 += roster.rankHits[1];
+      histogram.rank3 += roster.rankHits[2];
+      histogram.rank4 += roster.rankHits[3];
+      histogram.rank5 += roster.rankHits[4];
+    }
+
+    // Calculate unranked assignments
+    const totalFromRanks = histogram.rank1 + histogram.rank2 + histogram.rank3 + histogram.rank4 + histogram.rank5;
+    histogram.unranked = totalAssignments - totalFromRanks;
+
+    return histogram;
+  }, [volunteerRosters, totalAssignments]);
+
+  // Calculate satisfaction distribution (how many volunteers at each satisfaction level)
+  const satisfactionDistribution = useMemo(() => {
+    if (!metrics) return null;
+
+    const buckets: { range: string; count: number; volunteers: string[] }[] = [];
+    const volMetrics = Array.from(metrics.volunteerMetrics.entries());
+
+    // Create buckets based on avg satisfaction per shift
+    // 4-5: Excellent, 3-4: Good, 2-3: Fair, 1-2: Poor, 0-1: Very Poor
+    const excellent: string[] = [];
+    const good: string[] = [];
+    const fair: string[] = [];
+    const poor: string[] = [];
+    const veryPoor: string[] = [];
+
+    for (const [name, m] of volMetrics) {
+      if (m.avgSatisfaction >= 4) excellent.push(name);
+      else if (m.avgSatisfaction >= 3) good.push(name);
+      else if (m.avgSatisfaction >= 2) fair.push(name);
+      else if (m.avgSatisfaction >= 1) poor.push(name);
+      else veryPoor.push(name);
+    }
+
+    buckets.push({ range: 'Excellent (4-5)', count: excellent.length, volunteers: excellent });
+    buckets.push({ range: 'Good (3-4)', count: good.length, volunteers: good });
+    buckets.push({ range: 'Fair (2-3)', count: fair.length, volunteers: fair });
+    buckets.push({ range: 'Poor (1-2)', count: poor.length, volunteers: poor });
+    buckets.push({ range: 'Very Poor (0-1)', count: veryPoor.length, volunteers: veryPoor });
+
+    return buckets;
+  }, [metrics]);
+
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
+    const shiftById = new Map(shifts.map(s => [s.id, s]));
 
-    // ShiftVols sheet
+    // ===== REPORT SHEET - Algorithm Transparency (#006/#007) =====
+    const reportData: (string | number)[][] = [
+      ['SHIFT SORTING HAT - ASSIGNMENT REPORT'],
+      ['Generated: ' + new Date().toLocaleString()],
+      [''],
+      ['=== ALGORITHM OVERVIEW ==='],
+      ['This report was generated using a two-phase optimization algorithm:'],
+      [''],
+      ['Phase 1: Preference Optimization'],
+      ['- Uses binary search to find the highest achievable minimum average satisfaction'],
+      ['- Each volunteer is guaranteed to receive shifts that maximize their average happiness'],
+      ['- Satisfaction score: Rank 1 = 5 points, Rank 2 = 4 points, ..., Rank 5 = 1 point per shift'],
+      [''],
+      ['Phase 2: Hard-Fill (if needed)'],
+      ['- Ensures all shift slots are filled even if some volunteers must take unpreferred shifts'],
+      ['- Maintains fairness constraints while guaranteeing full coverage'],
+      [''],
+      ['=== SETTINGS USED ==='],
+      ['Minimum Points per Volunteer:', settings.minPoints],
+      ['Maximum Points Over Minimum:', settings.maxOver],
+      ['Maximum Shifts per Volunteer:', settings.maxShifts],
+      ['Preference Guarantee Level:', settings.guaranteeLevel > 0 ? `Top ${settings.guaranteeLevel}` : 'None'],
+      ['Back-to-Back Shifts:', settings.forbidBackToBack ? 'Forbidden' : 'Minimized'],
+      ['Back-to-Back Gap (hours):', settings.backToBackGap],
+      ['Constraint Relaxation:', settings.allowRelaxation ? 'Allowed' : 'Disabled'],
+      ['Random Seed:', settings.seed],
+      [''],
+      ['=== RESULT SUMMARY ==='],
+      ['Status:', solverResult?.phase === 1 ? 'Optimal (Phase 1)' : 'Feasible (Phase 2)'],
+      ['Total Assignments:', totalAssignments],
+      ['Shifts Fully Staffed:', `${shiftsFullyStaffed}/${shifts.length}`],
+      ['Volunteers Assigned:', volunteers.length],
+      [''],
+      ['=== FAIRNESS METRICS ==='],
+    ];
+
+    if (metrics) {
+      reportData.push(
+        ['Fairness Index:', `${(metrics.fairnessIndex * 100).toFixed(1)}%`],
+        ['Average Satisfaction per Shift:', metrics.overallAvgSatPerShift.toFixed(2)],
+        ['Satisfaction Range:', `${metrics.minSatisfaction} - ${metrics.maxSatisfaction}`],
+        ['Std Dev (lower = more fair):', metrics.stdDevSatisfaction.toFixed(2)],
+        [''],
+        ['=== PREFERENCE DISTRIBUTION ==='],
+        ['#1 Choices Assigned:', preferenceHistogram.rank1],
+        ['#2 Choices Assigned:', preferenceHistogram.rank2],
+        ['#3 Choices Assigned:', preferenceHistogram.rank3],
+        ['#4 Choices Assigned:', preferenceHistogram.rank4],
+        ['#5 Choices Assigned:', preferenceHistogram.rank5],
+        ['Unranked (Fallback):', preferenceHistogram.unranked],
+        ['% From Preferences:', `${metrics.pctAssignmentsFromPrefs.toFixed(1)}%`],
+        [''],
+        ['Volunteers with #1 Choice:', rankCounts[0]],
+        ['Volunteers with Top 3 Choice:', volunteersWithTop3]
+      );
+    }
+
+    const reportSheet = XLSX.utils.aoa_to_sheet(reportData);
+    reportSheet['!cols'] = [{ wch: 35 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, reportSheet, 'Report');
+
+    // ===== SHIFT ASSIGNMENTS SHEET =====
     const shiftVolsData = shiftAssignments.map(s => {
       const row: Record<string, unknown> = {
         ShiftID: s.shiftId,
@@ -244,10 +367,9 @@ export function Results() {
       return row;
     });
     const shiftVolsSheet = XLSX.utils.json_to_sheet(shiftVolsData);
-    XLSX.utils.book_append_sheet(wb, shiftVolsSheet, 'ShiftVols');
+    XLSX.utils.book_append_sheet(wb, shiftVolsSheet, 'ShiftAssignments');
 
-    // Roster sheet
-    const shiftById = new Map(shifts.map(s => [s.id, s]));
+    // ===== ROSTER SHEET =====
     const rosterData = volunteerRosters.map(r => {
       const row: Record<string, unknown> = {
         Volunteer: r.name,
@@ -262,25 +384,138 @@ export function Results() {
       return row;
     });
     const rosterSheet = XLSX.utils.json_to_sheet(rosterData);
-    XLSX.utils.book_append_sheet(wb, rosterSheet, 'Roster');
+    XLSX.utils.book_append_sheet(wb, rosterSheet, 'VolunteerRosters');
 
-    // Audit sheet
-    const auditSheetData = auditData.map(a => ({
-      Volunteer: a.volunteer,
-      TotalPoints: a.totalPoints,
-      NumShifts: a.numShifts,
-      '#1 hits': a.rankHits[1] || 0,
-      '#2 hits': a.rankHits[2] || 0,
-      '#3 hits': a.rankHits[3] || 0,
-      '#4 hits': a.rankHits[4] || 0,
-      '#5 hits': a.rankHits[5] || 0,
-      AssignedShifts: a.assignedShifts.join('; ')
-    }));
+    // ===== AUDIT SHEET =====
+    const auditSheetData = auditData.map(a => {
+      const volMetrics = metrics?.volunteerMetrics.get(a.volunteer);
+      return {
+        Volunteer: a.volunteer,
+        TotalPoints: a.totalPoints,
+        NumShifts: a.numShifts,
+        Satisfaction: volMetrics?.satisfaction ?? 0,
+        'Avg/Shift': volMetrics?.avgSatisfaction.toFixed(2) ?? '-',
+        '% From Prefs': volMetrics ? `${volMetrics.pctFromPrefs.toFixed(0)}%` : '-',
+        '#1 hits': a.rankHits[1] || 0,
+        '#2 hits': a.rankHits[2] || 0,
+        '#3 hits': a.rankHits[3] || 0,
+        '#4 hits': a.rankHits[4] || 0,
+        '#5 hits': a.rankHits[5] || 0,
+        AssignedShifts: a.assignedShifts.join('; ')
+      };
+    });
     const auditSheet = XLSX.utils.json_to_sheet(auditSheetData);
     XLSX.utils.book_append_sheet(wb, auditSheet, 'Audit');
 
     // Download
     XLSX.writeFile(wb, 'shift_assignments.xlsx');
+  };
+
+  const exportDailyShiftsPDF = () => {
+    const doc = new jsPDF();
+
+    // Get assignment map
+    const assignmentMap = new Map<string, string[]>();
+    if (solverResult) {
+      for (const a of solverResult.assignments) {
+        const vols = assignmentMap.get(a.shiftId) || [];
+        vols.push(a.volunteerName);
+        assignmentMap.set(a.shiftId, vols);
+      }
+    }
+
+    // Group shifts by date
+    const shiftsByDate = new Map<string, typeof shifts>();
+    for (const shift of shifts) {
+      const existing = shiftsByDate.get(shift.date) || [];
+      existing.push(shift);
+      shiftsByDate.set(shift.date, existing);
+    }
+
+    const sortedDates = Array.from(shiftsByDate.keys()).sort();
+    let isFirstPage = true;
+
+    for (const date of sortedDates) {
+      if (!isFirstPage) {
+        doc.addPage();
+      }
+      isFirstPage = false;
+
+      const dayShifts = shiftsByDate.get(date)!;
+      dayShifts.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+      // Page title
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Daily Shift Assignments`, 14, 20);
+
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'normal');
+      doc.text(date, 14, 30);
+
+      // Calculate max volunteers for column headers
+      const maxVols = Math.max(...dayShifts.map(s => assignmentMap.get(s.id)?.length || 0), 1);
+
+      // Build table data
+      const tableHead = ['Time', 'Role', 'Pts'];
+      for (let i = 1; i <= maxVols; i++) {
+        tableHead.push(`Vol ${i}`);
+      }
+
+      const tableBody = dayShifts.map(s => {
+        const assigned = assignmentMap.get(s.id) || [];
+        const timeStr = `${s.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${s.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        const row: string[] = [timeStr, s.role, s.points.toString()];
+        for (let i = 0; i < maxVols; i++) {
+          row.push(assigned[i] || '');
+        }
+        return row;
+      });
+
+      autoTable(doc, {
+        head: [tableHead],
+        body: tableBody,
+        startY: 38,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [59, 130, 246], // blue-500
+          textColor: 255,
+          fontStyle: 'bold',
+          fontSize: 9
+        },
+        bodyStyles: {
+          fontSize: 8
+        },
+        columnStyles: {
+          0: { cellWidth: 35 }, // Time
+          1: { cellWidth: 30 }, // Role
+          2: { cellWidth: 12, halign: 'center' }, // Points
+        },
+        styles: {
+          cellPadding: 2,
+          overflow: 'linebreak'
+        },
+        margin: { left: 14, right: 14 }
+      });
+
+      // Add summary at bottom
+      const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || 150;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(100);
+      doc.text(`${dayShifts.length} shifts | ${dayShifts.reduce((sum, s) => sum + (assignmentMap.get(s.id)?.length || 0), 0)} assignments`, 14, finalY + 8);
+    }
+
+    // Add footer to all pages
+    const pageCount = doc.getNumberOfPages();
+    doc.setFontSize(8);
+    doc.setTextColor(128);
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.text(`Generated by Shift Sorting Hat | Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10);
+    }
+
+    doc.save('daily_shifts.pdf');
   };
 
   const tabs: { id: Tab; label: string }[] = [
@@ -299,7 +534,19 @@ export function Results() {
             onClick={exportToExcel}
             className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg flex items-center gap-2"
           >
-            <span>Download Excel</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span>Download results .xlsx</span>
+          </button>
+          <button
+            onClick={exportDailyShiftsPDF}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+            <span>Download daily shifts PDF</span>
           </button>
           <button
             onClick={clearData}
@@ -560,6 +807,122 @@ export function Results() {
                     {volunteersWithTop3} of {volunteers.length} volunteers
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Preference Distribution Histogram (#001) */}
+          {metrics && (
+            <div className="col-span-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4">Preference Distribution</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Distribution of all {totalAssignments} assignments by preference rank. Higher concentration in #1-#3 indicates better overall match quality.
+              </p>
+              <div className="space-y-3">
+                {[
+                  { label: '#1 Choice', value: preferenceHistogram.rank1, color: 'bg-emerald-500' },
+                  { label: '#2 Choice', value: preferenceHistogram.rank2, color: 'bg-green-500' },
+                  { label: '#3 Choice', value: preferenceHistogram.rank3, color: 'bg-lime-500' },
+                  { label: '#4 Choice', value: preferenceHistogram.rank4, color: 'bg-yellow-500' },
+                  { label: '#5 Choice', value: preferenceHistogram.rank5, color: 'bg-orange-500' },
+                  { label: 'Unranked', value: preferenceHistogram.unranked, color: 'bg-gray-400' },
+                ].map((item) => {
+                  const pct = totalAssignments > 0 ? (item.value / totalAssignments) * 100 : 0;
+                  return (
+                    <div key={item.label} className="flex items-center gap-3">
+                      <div className="w-24 text-sm font-medium text-gray-600 dark:text-gray-400">{item.label}</div>
+                      <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-6 overflow-hidden">
+                        <div
+                          className={`${item.color} h-6 rounded-full flex items-center justify-end pr-2 transition-all duration-500`}
+                          style={{ width: `${Math.max(pct, item.value > 0 ? 8 : 0)}%` }}
+                        >
+                          {pct >= 10 && (
+                            <span className="text-xs font-medium text-white">{item.value}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="w-20 text-right text-sm text-gray-600 dark:text-gray-400">
+                        {item.value} ({pct.toFixed(1)}%)
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    {((preferenceHistogram.rank1 + preferenceHistogram.rank2 + preferenceHistogram.rank3) / totalAssignments * 100).toFixed(1)}%
+                  </div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">Top 3 Choices</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {(((preferenceHistogram.rank1 + preferenceHistogram.rank2 + preferenceHistogram.rank3 + preferenceHistogram.rank4 + preferenceHistogram.rank5) / totalAssignments) * 100).toFixed(1)}%
+                  </div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">From Preferences</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-gray-600 dark:text-gray-400">
+                    {(preferenceHistogram.unranked / totalAssignments * 100).toFixed(1)}%
+                  </div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">Fallback</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Satisfaction Distribution Histogram (#001) */}
+          {satisfactionDistribution && (
+            <div className="col-span-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4">Volunteer Satisfaction Distribution</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                How volunteers are distributed by their average satisfaction per shift. Identifies if certain volunteers consistently get worse assignments.
+              </p>
+              <div className="grid grid-cols-5 gap-2">
+                {satisfactionDistribution.map((bucket, idx) => {
+                  const maxCount = Math.max(...satisfactionDistribution.map(b => b.count), 1);
+                  const heightPct = (bucket.count / maxCount) * 100;
+                  const colors = [
+                    'bg-emerald-500 hover:bg-emerald-600',
+                    'bg-green-500 hover:bg-green-600',
+                    'bg-yellow-500 hover:bg-yellow-600',
+                    'bg-orange-500 hover:bg-orange-600',
+                    'bg-red-500 hover:bg-red-600'
+                  ];
+                  return (
+                    <div key={idx} className="flex flex-col items-center">
+                      <div className="h-32 w-full flex items-end justify-center">
+                        <div
+                          className={`w-full max-w-16 ${colors[idx]} rounded-t transition-all duration-500 cursor-pointer group relative`}
+                          style={{ height: `${Math.max(heightPct, bucket.count > 0 ? 10 : 0)}%` }}
+                          title={bucket.volunteers.length > 0 ? bucket.volunteers.join(', ') : 'No volunteers'}
+                        >
+                          <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-sm font-bold text-gray-700 dark:text-gray-300">
+                            {bucket.count}
+                          </div>
+                          {/* Tooltip with volunteer names */}
+                          {bucket.volunteers.length > 0 && (
+                            <div className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10 w-48 max-h-32 overflow-y-auto">
+                              <div className="font-semibold mb-1">{bucket.range}</div>
+                              {bucket.volunteers.map(v => (
+                                <div key={v} className="text-gray-300">{v}</div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-gray-600 dark:text-gray-400 text-center leading-tight">
+                        {bucket.range.split(' ')[0]}
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                        {bucket.range.match(/\([\d-]+\)/)?.[0]}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400 text-center">
+                Hover over bars to see volunteer names. Avg satisfaction: Rank 1 = 5pts, Rank 2 = 4pts, ..., Rank 5 = 1pt per shift.
               </div>
             </div>
           )}

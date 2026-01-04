@@ -11,8 +11,9 @@ This document tracks potential improvements analyzed from three user perspective
 
 ## 1. Admin Perspective (Fairness & Equity Focus)
 
-- [ ] **#001 - Equity metrics dashboard** - Show distribution of preference satisfaction across volunteers (histogram of #1, #2, etc. hits)
+- [x] **#001 - Equity metrics dashboard** - Show distribution of preference satisfaction across volunteers (histogram of #1, #2, etc. hits) ✓
   - *Benefit: Demonstrate fairness; identify if certain people consistently get worse assignments*
+  - *Completed: 2026-01-04*
 
 - [ ] **#002 - Year-over-year tracking** - Import previous years' data to factor in historical assignment quality
   - *Benefit: Volunteers who got unlucky last year can be prioritized this year*
@@ -26,18 +27,21 @@ This document tracks potential improvements analyzed from three user perspective
 - [ ] **#005 - Conflict-of-interest handling** - Prevent specific volunteer pairs from being assigned together (or require them together)
   - *Benefit: Handle interpersonal dynamics, supervision requirements, buddy systems*
 
-- [ ] **#006 - Transparency report** - Generate document explaining algorithm, constraints, and assignment rationale
+- [x] **#006 - Transparency report** - Generate document explaining algorithm, constraints, and assignment rationale ✓
   - *Benefit: Preempt complaints; demonstrate fair process*
+  - *Completed: 2026-01-04 - Added "Report" sheet in Excel export with algorithm explanation, settings, and fairness metrics*
 
 - [ ] **#007 - Multiple solution comparison** - Run solver with different seeds and compare outcomes
   - *Benefit: Demonstrate results are stable, not just one lucky/unlucky configuration*
+  - *Note: Seed is now exposed in Report sheet for reproducibility*
 
 ---
 
 ## 2. Shift Lead Perspective (Operational Focus)
 
-- [ ] **#008 - Input validation with clear errors** - Validate shift IDs match, flag volunteers with no valid preferences before solving
+- [x] **#008 - Input validation with clear errors** - Validate shift IDs match, flag volunteers with no valid preferences before solving ✓
   - *Benefit: Catch data entry errors before wasting time on failed solves*
+  - *Completed: 2026-01-04 - Added comprehensive validation at Review stage: missing preferences, invalid shift references, duplicate names, short shifts, etc.*
 
 - [ ] **#009 - "What-if" scenarios** - Save current solution, tweak assignments manually, see impact
   - *Benefit: Handle last-minute changes ("Alex dropped out, who can cover?")*
@@ -54,11 +58,13 @@ This document tracks potential improvements analyzed from three user perspective
 - [ ] **#013 - Undo/history** - Track changes and allow rollback
   - *Benefit: Don't lose work when mistakes happen*
 
-- [ ] **#014 - Progress indicator during solve** - Show meaningful progress (Phase 1/2, % complete)
+- [x] **#014 - Progress indicator during solve** - Show meaningful progress (Phase 1/2, % complete) ✓
   - *Benefit: Long solves less stressful when progress is visible*
+  - *Completed: 2026-01-04 - Added visual phase indicator, progress bar, and percentage during optimization*
 
-- [ ] **#015 - Infeasibility diagnosis** - When no solution exists, explain WHY (which constraints conflict)
+- [x] **#015 - Infeasibility diagnosis** - When no solution exists, explain WHY (which constraints conflict) ✓
   - *Benefit: Currently just says "infeasible" - make it actionable*
+  - *Completed: 2026-01-04 - Added detailed diagnosis with capacity excess, points shortage, concurrent overlap, back-to-back constraints, and guarantee bottleneck detection*
 
 - [ ] **#016 - Partial preference support** - Handle volunteers who only ranked 2-3 shifts instead of 5
   - *Benefit: Real data is messy; handle gracefully*
@@ -101,7 +107,7 @@ This document tracks potential improvements analyzed from three user perspective
 - [ ] **#026 - Mobile-friendly UI** - Responsive design for phone/tablet
   - *Benefit: Shift leads often work from phones on-site*
 
-- [ ] **#027 - Dark mode**
+- [x] **#027 - Dark mode** ✓
   - *Benefit: Accessibility and user preference*
 
 - [ ] **#028 - Offline capability** - PWA that works without internet
@@ -121,8 +127,8 @@ This document tracks potential improvements analyzed from three user perspective
 ## Prioritization
 
 ### High Impact, Lower Effort
-- [ ] #008 - Input validation with clear errors
-- [ ] #015 - Infeasibility diagnosis
+- [x] #008 - Input validation with clear errors ✓
+- [x] #015 - Infeasibility diagnosis ✓
 - [ ] #011 - Email/notification templates
 - [ ] #018 - Personal assignment explanation in results
 
@@ -135,5 +141,23 @@ This document tracks potential improvements analyzed from three user perspective
 
 ## Completed
 
+- [x] **#027 - Dark mode** - Toggle in header, persists to localStorage, full styling across all pages
+  - *Completed: 2026-01-04*
 
-*Items will be moved here as they are implemented*
+- [x] **#001 - Equity metrics dashboard** - Preference distribution histogram and satisfaction distribution charts on Results page
+  - *Completed: 2026-01-04*
+
+- [x] **#006 - Transparency report** - Algorithm explanation, settings, and fairness metrics in Excel export "Report" sheet
+  - *Completed: 2026-01-04*
+
+- [x] **#008 - Input validation** - Comprehensive validation at Review stage with expandable error/warning details
+  - *Completed: 2026-01-04*
+
+- [x] **#014 - Progress indicator** - Visual phase indicator (1/2), progress bar, and percentage during optimization
+  - *Completed: 2026-01-04*
+
+- [x] **#015 - Infeasibility diagnosis** - Detailed analysis with actionable suggestions when solver fails
+  - *Completed: 2026-01-04*
+
+- [x] **Excel report enhancement** - One sheet per day with formatted volunteer assignments, Report sheet with algorithm transparency
+  - *Completed: 2026-01-04*

@@ -1,6 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useAppStore } from '../store/appStore';
 import { solveShiftAssignment } from '../lib/solver/shiftSolver';
+
+interface ValidationIssue {
+  type: 'error' | 'warning';
+  category: string;
+  message: string;
+  details?: string[];
+}
 
 export function DataReview() {
   const {
@@ -29,6 +36,144 @@ export function DataReview() {
 
   const prefsCount = volunteers.reduce((sum, v) => sum + v.preferences.size, 0);
   const avgPrefs = volunteers.length > 0 ? (prefsCount / volunteers.length).toFixed(1) : 0;
+
+  // Comprehensive input validation (#008)
+  const validationIssues = useMemo((): ValidationIssue[] => {
+    const issues: ValidationIssue[] = [];
+    const shiftIds = new Set(shifts.map(s => s.id));
+
+    // Check for volunteers with no preferences
+    const volunteersWithNoPrefs = volunteers.filter(v => v.preferences.size === 0);
+    if (volunteersWithNoPrefs.length > 0) {
+      issues.push({
+        type: 'error',
+        category: 'Missing Preferences',
+        message: `${volunteersWithNoPrefs.length} volunteer(s) have no shift preferences`,
+        details: volunteersWithNoPrefs.map(v => v.name)
+      });
+    }
+
+    // Check for volunteers with fewer than 5 preferences
+    const volunteersWithFewPrefs = volunteers.filter(v => v.preferences.size > 0 && v.preferences.size < 5);
+    if (volunteersWithFewPrefs.length > 0) {
+      issues.push({
+        type: 'warning',
+        category: 'Few Preferences',
+        message: `${volunteersWithFewPrefs.length} volunteer(s) ranked fewer than 5 shifts`,
+        details: volunteersWithFewPrefs.map(v => `${v.name} (${v.preferences.size} prefs)`)
+      });
+    }
+
+    // Check for preferences referencing non-existent shifts
+    const invalidPrefsMap: Map<string, string[]> = new Map();
+    for (const vol of volunteers) {
+      const invalidShifts: string[] = [];
+      for (const [shiftId] of vol.preferences) {
+        if (!shiftIds.has(shiftId)) {
+          invalidShifts.push(shiftId);
+        }
+      }
+      if (invalidShifts.length > 0) {
+        invalidPrefsMap.set(vol.name, invalidShifts);
+      }
+    }
+    if (invalidPrefsMap.size > 0) {
+      const details: string[] = [];
+      for (const [name, badShifts] of invalidPrefsMap) {
+        details.push(`${name}: ${badShifts.join(', ')}`);
+      }
+      issues.push({
+        type: 'error',
+        category: 'Invalid Shift References',
+        message: `${invalidPrefsMap.size} volunteer(s) have preferences for non-existent shifts`,
+        details
+      });
+    }
+
+    // Check for shifts with very high or very low preference demand
+    const shiftPreferenceCounts = new Map<string, number>();
+    for (const shift of shifts) {
+      shiftPreferenceCounts.set(shift.id, 0);
+    }
+    for (const vol of volunteers) {
+      for (const [shiftId] of vol.preferences) {
+        if (shiftPreferenceCounts.has(shiftId)) {
+          shiftPreferenceCounts.set(shiftId, (shiftPreferenceCounts.get(shiftId) || 0) + 1);
+        }
+      }
+    }
+
+    // Shifts with zero preference demand
+    const shiftsWithNoPrefs = shifts.filter(s => (shiftPreferenceCounts.get(s.id) || 0) === 0);
+    if (shiftsWithNoPrefs.length > 0) {
+      issues.push({
+        type: 'warning',
+        category: 'Unpopular Shifts',
+        message: `${shiftsWithNoPrefs.length} shift(s) have no volunteer preferences`,
+        details: shiftsWithNoPrefs.map(s => `${s.id} (${s.role}, ${s.date})`)
+      });
+    }
+
+    // Check supply vs demand balance
+    const totalSlots = shifts.reduce((sum, s) => sum + s.capacity, 0);
+    const avgSlotsPerVolunteer = volunteers.length > 0 ? totalSlots / volunteers.length : 0;
+    const minRequiredSlots = volunteers.length * Math.ceil(settings.minPoints / (shifts.length > 0 ?
+      shifts.reduce((sum, s) => sum + s.points, 0) / shifts.length : 1));
+
+    if (totalSlots < minRequiredSlots * 0.8) {
+      issues.push({
+        type: 'warning',
+        category: 'Capacity Shortage',
+        message: `There may not be enough shift slots (${totalSlots}) for all volunteers (${volunteers.length})`,
+        details: [`Average slots per volunteer: ${avgSlotsPerVolunteer.toFixed(1)}`]
+      });
+    }
+
+    // Check for duplicate volunteer names
+    const nameCount = new Map<string, number>();
+    for (const vol of volunteers) {
+      nameCount.set(vol.name, (nameCount.get(vol.name) || 0) + 1);
+    }
+    const duplicates = Array.from(nameCount.entries()).filter(([, count]) => count > 1);
+    if (duplicates.length > 0) {
+      issues.push({
+        type: 'error',
+        category: 'Duplicate Names',
+        message: `${duplicates.length} volunteer name(s) appear multiple times`,
+        details: duplicates.map(([name, count]) => `"${name}" appears ${count} times`)
+      });
+    }
+
+    // Check for shifts where end time is before start time (error)
+    const invertedShifts = shifts.filter(s => s.endTime <= s.startTime);
+    if (invertedShifts.length > 0) {
+      issues.push({
+        type: 'error',
+        category: 'Invalid Time Range',
+        message: `${invertedShifts.length} shift(s) have end time before or equal to start time`,
+        details: invertedShifts.map(s => `${s.id}: ${s.startTime.toLocaleTimeString()} - ${s.endTime.toLocaleTimeString()}`)
+      });
+    }
+
+    // Check for very short shifts (warning - potential data entry error)
+    const shortShifts = shifts.filter(s => {
+      const durationHours = (s.endTime.getTime() - s.startTime.getTime()) / (1000 * 60 * 60);
+      return durationHours > 0 && durationHours < 0.5; // Only check valid shifts
+    });
+    if (shortShifts.length > 0) {
+      issues.push({
+        type: 'warning',
+        category: 'Short Shifts',
+        message: `${shortShifts.length} shift(s) are less than 30 minutes long`,
+        details: shortShifts.map(s => `${s.id}: ${s.startTime.toLocaleTimeString()} - ${s.endTime.toLocaleTimeString()}`)
+      });
+    }
+
+    return issues;
+  }, [shifts, volunteers, settings.minPoints]);
+
+  const hasErrors = validationIssues.some(i => i.type === 'error');
+  const [showValidationDetails, setShowValidationDetails] = useState<string | null>(null);
 
   const handleSolve = async () => {
     setStep('solving');
@@ -74,12 +219,109 @@ export function DataReview() {
 
       {parseWarnings.length > 0 && (
         <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-          <h3 className="text-yellow-800 dark:text-yellow-300 font-semibold mb-2">Warnings:</h3>
+          <h3 className="text-yellow-800 dark:text-yellow-300 font-semibold mb-2">Parse Warnings:</h3>
           <ul className="list-disc list-inside text-yellow-700 dark:text-yellow-400 text-sm">
             {parseWarnings.map((warning, i) => (
               <li key={i}>{warning}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Validation Issues (#008) */}
+      {validationIssues.length > 0 && (
+        <div className="mb-6 space-y-3">
+          <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">
+            <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            Data Validation
+            {hasErrors && (
+              <span className="text-xs font-normal text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 px-2 py-1 rounded">
+                {validationIssues.filter(i => i.type === 'error').length} error(s) must be fixed
+              </span>
+            )}
+          </h3>
+
+          {validationIssues.filter(i => i.type === 'error').map((issue, idx) => (
+            <div key={`error-${idx}`} className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-red-800 dark:text-red-200">{issue.category}</p>
+                    {issue.details && issue.details.length > 0 && (
+                      <button
+                        onClick={() => setShowValidationDetails(showValidationDetails === `error-${idx}` ? null : `error-${idx}`)}
+                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                      >
+                        {showValidationDetails === `error-${idx}` ? 'Hide details' : 'Show details'}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-red-700 dark:text-red-300 text-sm mt-1">{issue.message}</p>
+                  {showValidationDetails === `error-${idx}` && issue.details && (
+                    <ul className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 p-2 rounded max-h-32 overflow-y-auto">
+                      {issue.details.map((d, i) => (
+                        <li key={i} className="font-mono">{d}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {validationIssues.filter(i => i.type === 'warning').map((issue, idx) => (
+            <div key={`warning-${idx}`} className="p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-amber-800 dark:text-amber-200">{issue.category}</p>
+                    {issue.details && issue.details.length > 0 && (
+                      <button
+                        onClick={() => setShowValidationDetails(showValidationDetails === `warning-${idx}` ? null : `warning-${idx}`)}
+                        className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                      >
+                        {showValidationDetails === `warning-${idx}` ? 'Hide details' : 'Show details'}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-amber-700 dark:text-amber-300 text-sm mt-1">{issue.message}</p>
+                  {showValidationDetails === `warning-${idx}` && issue.details && (
+                    <ul className="mt-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/50 p-2 rounded max-h-32 overflow-y-auto">
+                      {issue.details.map((d, i) => (
+                        <li key={i} className="font-mono">{d}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {!hasErrors && validationIssues.length > 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+              Warnings above may affect results but won't prevent optimization.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* All Clear Message */}
+      {validationIssues.length === 0 && (
+        <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-3">
+          <svg className="w-5 h-5 text-green-500 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          <p className="text-green-800 dark:text-green-200">
+            <span className="font-medium">Data validation passed!</span> All shift and volunteer data looks good.
+          </p>
         </div>
       )}
 
@@ -533,13 +775,23 @@ export function DataReview() {
       </div>
 
       {/* Action Button */}
-      <div className="flex justify-center">
+      <div className="flex flex-col items-center gap-2">
         <button
           onClick={handleSolve}
-          className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors"
+          disabled={hasErrors}
+          className={`px-8 py-3 font-semibold rounded-lg shadow-md transition-colors ${
+            hasErrors
+              ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+              : 'bg-blue-600 hover:bg-blue-700 text-white'
+          }`}
         >
           Run Optimization
         </button>
+        {hasErrors && (
+          <p className="text-sm text-red-600 dark:text-red-400">
+            Please fix the validation errors above before running optimization.
+          </p>
+        )}
       </div>
     </div>
   );

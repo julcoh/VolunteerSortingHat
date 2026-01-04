@@ -1,5 +1,5 @@
 // Version format: x.y.zzz
-// x = major version (manual changes only)
-// y = increments with each git commit
+// x = major version (only when Julien explicitly requests)
+// y = minor version (only when Julien explicitly requests)
 // zzz = increments with each code change via terminal
-export const VERSION = '0.1.061';
+export const VERSION = '0.1.066';

@@ -8,7 +8,7 @@ export function SolvingProgress() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">
+      <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">
         {isRunning ? 'Optimizing Shifts...' : isError ? 'Optimization Failed' : 'Optimization Complete'}
       </h2>
 
@@ -24,9 +24,9 @@ export function SolvingProgress() {
       </div>
 
       {isError && solverResult && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <h3 className="text-red-800 font-semibold mb-2">Error:</h3>
-          <p className="text-red-700">{solverResult.message}</p>
+        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+          <h3 className="text-red-800 dark:text-red-300 font-semibold mb-2">Error:</h3>
+          <p className="text-red-700 dark:text-red-400">{solverResult.message}</p>
         </div>
       )}
 

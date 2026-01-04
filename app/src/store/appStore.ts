@@ -12,6 +12,11 @@ import type {
 import { detectOptimalSettings } from '../lib/solver/feasibilityChecker';
 
 interface AppState {
+  // Dark mode
+  darkMode: boolean;
+  setDarkMode: (dark: boolean) => void;
+  toggleDarkMode: () => void;
+
   // Current step in the workflow
   step: AppStep;
   setStep: (step: AppStep) => void;
@@ -75,7 +80,30 @@ const defaultSettings: Settings = {
   seed: Math.floor(Math.random() * 1000000)
 };
 
+// Initialize dark mode from localStorage or system preference
+const getInitialDarkMode = (): boolean => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('darkMode');
+    if (stored !== null) {
+      return stored === 'true';
+    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  return false;
+};
+
 export const useAppStore = create<AppState>((set, get) => ({
+  darkMode: getInitialDarkMode(),
+  setDarkMode: (dark) => {
+    localStorage.setItem('darkMode', String(dark));
+    set({ darkMode: dark });
+  },
+  toggleDarkMode: () => {
+    const newValue = !get().darkMode;
+    localStorage.setItem('darkMode', String(newValue));
+    set({ darkMode: newValue });
+  },
+
   step: 'upload',
   setStep: (step) => set({ step }),
 

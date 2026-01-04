@@ -155,19 +155,20 @@ The app version is stored in `app/src/version.ts` and displayed in the site foot
 | Segment | When to Increment | Who |
 |---------|-------------------|-----|
 | `x` | Major version changes | Only when Julien explicitly requests |
-| `y` | Each git commit | Increment when creating a commit |
+| `y` | Minor version changes | Only when Julien explicitly requests |
 | `zzz` | Each code change via terminal | Increment after every code modification |
 
 **Rules:**
 - Increment `zzz` after making code changes (even small ones)
-- When committing, increment `y` and reset `zzz` to `001`
-- `x` only changes when Julien explicitly requests a major version bump
+- Do NOT automatically increment `x` or `y` — only Julien decides when to bump these
+- When committing to git, just commit with the current version (do not change version on commit)
 
 **Example progression:**
 - `0.1.001` - initial
 - `0.1.002` - after a code change
 - `0.1.003` - after another code change
-- `0.2.001` - after git commit (y increments, zzz resets)
+- `0.1.004` - after git commit (version unchanged, zzz keeps incrementing)
+- `0.2.001` - after Julien requests minor version bump (y increments, zzz resets)
 - `1.0.001` - after Julien requests major version bump
 
 ---
@@ -189,3 +190,24 @@ Keep a running log of all significant changes between this web app and the origi
 - After modifying the optimization algorithm
 
 This file serves as release notes for Julien to communicate changes to existing fruitPOP users.
+
+---
+
+## Section 11: Landing Page Documentation
+
+The landing page (`app/src/components/FileUpload.tsx`) includes a "How to Use This Tool" readme section with collapsible panels explaining:
+- What the tool is
+- How the optimization works
+- Input file format requirements
+- What happens after upload
+
+**When to update this section:**
+- After changes to the optimization algorithm or objective function
+- After changes to input file format (columns, sheets, file types)
+- After significant UI workflow changes
+- After adding/removing features that affect how users interact with the tool
+
+**Keep it:**
+- User-friendly (non-technical language)
+- Accurate to current behavior
+- Concise but complete

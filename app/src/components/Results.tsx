@@ -293,7 +293,7 @@ export function Results() {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Results</h2>
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Results</h2>
         <div className="flex gap-3">
           <button
             onClick={exportToExcel}
@@ -303,7 +303,7 @@ export function Results() {
           </button>
           <button
             onClick={clearData}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+            className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
           >
             Start Over
           </button>
@@ -312,10 +312,10 @@ export function Results() {
 
       {/* Status Banner */}
       <div className={`mb-6 p-4 rounded-lg ${
-        solverResult?.phase === 1 ? 'bg-green-50 border border-green-200' :
-        solverResult?.relaxation ? 'bg-orange-50 border border-orange-200' : 'bg-yellow-50 border border-yellow-200'
+        solverResult?.phase === 1 ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800' :
+        solverResult?.relaxation ? 'bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800' : 'bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800'
       }`}>
-        <p className={solverResult?.phase === 1 ? 'text-green-800' : solverResult?.relaxation ? 'text-orange-800' : 'text-yellow-800'}>
+        <p className={solverResult?.phase === 1 ? 'text-green-800 dark:text-green-300' : solverResult?.relaxation ? 'text-orange-800 dark:text-orange-300' : 'text-yellow-800 dark:text-yellow-300'}>
           <strong>Status:</strong> {solverResult?.message}
           {solverResult?.phase === 2 && !solverResult?.relaxation && ' (Some shifts required fallback assignments outside of preferences)'}
         </p>
@@ -323,17 +323,17 @@ export function Results() {
 
       {/* Relaxation Warning Banner */}
       {solverResult?.relaxation && (
-        <div className="mb-6 p-4 rounded-lg bg-orange-100 border border-orange-300">
+        <div className="mb-6 p-4 rounded-lg bg-orange-100 dark:bg-orange-900/40 border border-orange-300 dark:border-orange-700">
           <div className="flex items-start gap-3">
-            <svg className="w-6 h-6 text-orange-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6 text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <div>
-              <h3 className="font-semibold text-orange-800">Constraints Were Relaxed</h3>
-              <p className="text-orange-700 mt-1">
+              <h3 className="font-semibold text-orange-800 dark:text-orange-200">Constraints Were Relaxed</h3>
+              <p className="text-orange-700 dark:text-orange-300 mt-1">
                 To fill all shifts, the solver had to relax some constraints:
               </p>
-              <ul className="text-orange-700 mt-2 list-disc list-inside space-y-1">
+              <ul className="text-orange-700 dark:text-orange-300 mt-2 list-disc list-inside space-y-1">
                 {solverResult.relaxation.minPointsMultiplier < 1 && (
                   <li>
                     Minimum points reduced to {Math.round(solverResult.relaxation.minPointsMultiplier * 100)}% of target
@@ -347,11 +347,11 @@ export function Results() {
                 )}
               </ul>
               {volunteerWarnings.length > 0 && (
-                <p className="text-orange-700 mt-2">
+                <p className="text-orange-700 dark:text-orange-300 mt-2">
                   <strong>{volunteerWarnings.length} volunteer{volunteerWarnings.length !== 1 ? 's' : ''}</strong> affected - see Warnings section below.
                 </p>
               )}
-              <div className="mt-3 text-sm text-orange-600">
+              <div className="mt-3 text-sm text-orange-600 dark:text-orange-400">
                 <strong>Suggestions:</strong> Consider adding more volunteers, reducing minimum points, or checking for too many overlapping shifts.
               </div>
             </div>
@@ -360,7 +360,7 @@ export function Results() {
       )}
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
         <nav className="flex gap-4">
           {tabs.map(tab => (
             <button
@@ -368,8 +368,8 @@ export function Results() {
               onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2 font-medium border-b-2 -mb-px transition-colors ${
                 activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
             >
               {tab.label}
@@ -382,30 +382,30 @@ export function Results() {
       {activeTab === 'summary' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Top row - key stats */}
-          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-            <div className="text-3xl font-bold text-blue-600">{totalAssignments}</div>
-            <div className="text-gray-500">Total Assignments</div>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 shadow-sm">
+            <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{totalAssignments}</div>
+            <div className="text-gray-500 dark:text-gray-400">Total Assignments</div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-            <div className="text-3xl font-bold text-green-600">{shiftsFullyStaffed}/{shifts.length}</div>
-            <div className="text-gray-500">Shifts Fully Staffed</div>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 shadow-sm">
+            <div className="text-3xl font-bold text-green-600 dark:text-green-400">{shiftsFullyStaffed}/{shifts.length}</div>
+            <div className="text-gray-500 dark:text-gray-400">Shifts Fully Staffed</div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-            <div className="text-3xl font-bold text-purple-600">{volunteers.length}</div>
-            <div className="text-gray-500">Volunteers Assigned</div>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 shadow-sm">
+            <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">{volunteers.length}</div>
+            <div className="text-gray-500 dark:text-gray-400">Volunteers Assigned</div>
           </div>
           <div className={`border rounded-lg p-5 shadow-sm ${
             solverResult?.phase === 1
-              ? 'bg-green-50 border-green-200'
-              : 'bg-yellow-50 border-yellow-200'
+              ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800'
+              : 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800'
           }`}>
             <div className={`text-xl font-bold ${
-              solverResult?.phase === 1 ? 'text-green-700' : 'text-yellow-700'
+              solverResult?.phase === 1 ? 'text-green-700 dark:text-green-300' : 'text-yellow-700 dark:text-yellow-300'
             }`}>
               {solverResult?.phase === 1 ? 'Optimal' : 'Fallback Used'}
             </div>
             <div className={`text-sm mt-1 ${
-              solverResult?.phase === 1 ? 'text-green-600' : 'text-yellow-600'
+              solverResult?.phase === 1 ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'
             }`}>
               {solverResult?.phase === 1
                 ? 'All shifts filled from preferences'
@@ -415,36 +415,36 @@ export function Results() {
 
           {/* Fairness Metrics */}
           {metrics && (
-            <div className="col-span-full bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-indigo-800 mb-4">Fairness Metrics</h3>
+            <div className="col-span-full bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/30 dark:to-purple-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-indigo-800 dark:text-indigo-200 mb-4">Fairness Metrics</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-indigo-600">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
                     {(metrics.fairnessIndex * 100).toFixed(0)}%
                   </div>
-                  <div className="text-sm text-gray-600">Fairness Index</div>
-                  <div className="text-xs text-gray-400 mt-1">Higher = more equal</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Fairness Index</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">Higher = more equal</div>
                 </div>
-                <div className="bg-white rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-indigo-600">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
                     {metrics.overallAvgSatPerShift.toFixed(2)}
                   </div>
-                  <div className="text-sm text-gray-600">Avg Satisfaction/Shift</div>
-                  <div className="text-xs text-gray-400 mt-1">Range: {metrics.minAvgSatPerShift.toFixed(1)} - {metrics.maxAvgSatPerShift.toFixed(1)}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Avg Satisfaction/Shift</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">Range: {metrics.minAvgSatPerShift.toFixed(1)} - {metrics.maxAvgSatPerShift.toFixed(1)}</div>
                 </div>
-                <div className="bg-white rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-indigo-600">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
                     {metrics.avgSatisfaction.toFixed(1)}
                   </div>
-                  <div className="text-sm text-gray-600">Avg Total Satisfaction</div>
-                  <div className="text-xs text-gray-400 mt-1">Range: {metrics.minSatisfaction} - {metrics.maxSatisfaction}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Avg Total Satisfaction</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">Range: {metrics.minSatisfaction} - {metrics.maxSatisfaction}</div>
                 </div>
-                <div className="bg-white rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-indigo-600">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
                     {metrics.stdDevSatisfaction.toFixed(2)}
                   </div>
-                  <div className="text-sm text-gray-600">Std Dev (Satisfaction)</div>
-                  <div className="text-xs text-gray-400 mt-1">Lower = more fair</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Std Dev (Satisfaction)</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">Lower = more fair</div>
                 </div>
               </div>
             </div>
@@ -452,15 +452,15 @@ export function Results() {
 
           {/* Assignment Sources */}
           {metrics && (
-            <div className="col-span-full md:col-span-2 bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-700 mb-4">Assignment Sources</h3>
+            <div className="col-span-full md:col-span-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4">Assignment Sources</h3>
               <div className="space-y-3">
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600">From Preferences (Rank 1-5)</span>
-                    <span className="font-medium text-green-600">{metrics.totalShiftsFromPrefs} ({metrics.pctAssignmentsFromPrefs.toFixed(1)}%)</span>
+                    <span className="text-gray-600 dark:text-gray-400">From Preferences (Rank 1-5)</span>
+                    <span className="font-medium text-green-600 dark:text-green-400">{metrics.totalShiftsFromPrefs} ({metrics.pctAssignmentsFromPrefs.toFixed(1)}%)</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                     <div
                       className="bg-green-500 h-2 rounded-full"
                       style={{ width: `${metrics.pctAssignmentsFromPrefs}%` }}
@@ -469,24 +469,24 @@ export function Results() {
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600">Fallback (Outside Preferences)</span>
-                    <span className="font-medium text-yellow-600">{metrics.totalShiftsOutsidePrefs} ({(100 - metrics.pctAssignmentsFromPrefs).toFixed(1)}%)</span>
+                    <span className="text-gray-600 dark:text-gray-400">Fallback (Outside Preferences)</span>
+                    <span className="font-medium text-yellow-600 dark:text-yellow-400">{metrics.totalShiftsOutsidePrefs} ({(100 - metrics.pctAssignmentsFromPrefs).toFixed(1)}%)</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                     <div
                       className="bg-yellow-500 h-2 rounded-full"
                       style={{ width: `${100 - metrics.pctAssignmentsFromPrefs}%` }}
                     />
                   </div>
                 </div>
-                <div className="pt-2 border-t border-gray-100 grid grid-cols-2 gap-4 text-sm">
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-700 grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-500">Volunteers with all shifts from prefs:</span>
-                    <span className="ml-2 font-medium text-green-600">{metrics.volunteersAllFromPrefs}</span>
+                    <span className="text-gray-500 dark:text-gray-400">Volunteers with all shifts from prefs:</span>
+                    <span className="ml-2 font-medium text-green-600 dark:text-green-400">{metrics.volunteersAllFromPrefs}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">Volunteers with fallback shifts:</span>
-                    <span className="ml-2 font-medium text-yellow-600">{metrics.volunteersWithFallback}</span>
+                    <span className="text-gray-500 dark:text-gray-400">Volunteers with fallback shifts:</span>
+                    <span className="ml-2 font-medium text-yellow-600 dark:text-yellow-400">{metrics.volunteersWithFallback}</span>
                   </div>
                 </div>
               </div>
@@ -495,26 +495,26 @@ export function Results() {
 
           {/* Points Distribution */}
           {metrics && (
-            <div className="col-span-full md:col-span-2 bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-700 mb-4">Points Distribution</h3>
+            <div className="col-span-full md:col-span-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4">Points Distribution</h3>
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-700">{metrics.minPoints}</div>
-                  <div className="text-sm text-gray-500">Min Points</div>
+                  <div className="text-2xl font-bold text-gray-700 dark:text-gray-300">{metrics.minPoints}</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">Min Points</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">{metrics.avgPoints.toFixed(1)}</div>
-                  <div className="text-sm text-gray-500">Avg Points</div>
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{metrics.avgPoints.toFixed(1)}</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">Avg Points</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-700">{metrics.maxPoints}</div>
-                  <div className="text-sm text-gray-500">Max Points</div>
+                  <div className="text-2xl font-bold text-gray-700 dark:text-gray-300">{metrics.maxPoints}</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">Max Points</div>
                 </div>
               </div>
-              <div className="pt-3 border-t border-gray-100">
+              <div className="pt-3 border-t border-gray-100 dark:border-gray-700">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Volunteers meeting minimum target:</span>
-                  <span className={`font-medium ${metrics.volunteersMetMinimum === volunteers.length ? 'text-green-600' : 'text-yellow-600'}`}>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Volunteers meeting minimum target:</span>
+                  <span className={`font-medium ${metrics.volunteersMetMinimum === volunteers.length ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
                     {metrics.volunteersMetMinimum}/{volunteers.length}
                     {metrics.volunteersMetMinimum === volunteers.length && ' ✓'}
                   </span>
@@ -525,38 +525,38 @@ export function Results() {
 
           {/* Overall Satisfaction */}
           {metrics && (
-            <div className="col-span-full bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-700 mb-4">Overall Satisfaction</h3>
+            <div className="col-span-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4">Overall Satisfaction</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Happiness Score */}
                 <div className="text-center">
-                  <div className="text-4xl font-bold text-green-600">
+                  <div className="text-4xl font-bold text-green-600 dark:text-green-400">
                     {Math.round((metrics.overallAvgSatPerShift / 5) * 100)}%
                   </div>
-                  <div className="text-sm text-gray-600 mt-1">Happiness Score</div>
-                  <div className="text-xs text-gray-400 mt-1">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Happiness Score</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                     100% = everyone got only #1 picks, 0% = no one got any top-5 picks
                   </div>
                 </div>
 
                 {/* Top Choice Stats */}
-                <div className="text-center border-l border-r border-gray-100 px-4">
-                  <div className="text-4xl font-bold text-blue-600">
+                <div className="text-center border-l border-r border-gray-100 dark:border-gray-700 px-4">
+                  <div className="text-4xl font-bold text-blue-600 dark:text-blue-400">
                     {volunteers.length > 0 ? Math.round((rankCounts[0] / volunteers.length) * 100) : 0}%
                   </div>
-                  <div className="text-sm text-gray-600 mt-1">Got Their #1 Choice</div>
-                  <div className="text-xs text-gray-400 mt-1">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Got Their #1 Choice</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                     {rankCounts[0]} of {volunteers.length} volunteers
                   </div>
                 </div>
 
                 {/* Top 3 Stats */}
                 <div className="text-center">
-                  <div className="text-4xl font-bold text-purple-600">
+                  <div className="text-4xl font-bold text-purple-600 dark:text-purple-400">
                     {volunteers.length > 0 ? Math.round((volunteersWithTop3 / volunteers.length) * 100) : 0}%
                   </div>
-                  <div className="text-sm text-gray-600 mt-1">Got a Top-3 Choice</div>
-                  <div className="text-xs text-gray-400 mt-1">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Got a Top-3 Choice</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                     {volunteersWithTop3} of {volunteers.length} volunteers
                   </div>
                 </div>
@@ -566,39 +566,39 @@ export function Results() {
 
           {/* Warnings Section */}
           {volunteerWarnings.length > 0 && (
-            <div className="col-span-full bg-orange-50 border border-orange-200 rounded-lg p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
+            <div className="col-span-full bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 rounded-lg p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-orange-800 dark:text-orange-200 mb-4 flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 Affected Volunteers ({volunteerWarnings.length})
               </h3>
-              <p className="text-sm text-orange-700 mb-4">
+              <p className="text-sm text-orange-700 dark:text-orange-300 mb-4">
                 These volunteers have assignments outside the normal constraints due to relaxation:
               </p>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead>
-                    <tr className="border-b border-orange-200">
-                      <th className="px-3 py-2 text-left text-orange-800">Volunteer</th>
-                      <th className="px-3 py-2 text-center text-orange-800">Points</th>
-                      <th className="px-3 py-2 text-center text-orange-800">Shifts</th>
-                      <th className="px-3 py-2 text-left text-orange-800">Issue</th>
+                    <tr className="border-b border-orange-200 dark:border-orange-700">
+                      <th className="px-3 py-2 text-left text-orange-800 dark:text-orange-200">Volunteer</th>
+                      <th className="px-3 py-2 text-center text-orange-800 dark:text-orange-200">Points</th>
+                      <th className="px-3 py-2 text-center text-orange-800 dark:text-orange-200">Shifts</th>
+                      <th className="px-3 py-2 text-left text-orange-800 dark:text-orange-200">Issue</th>
                     </tr>
                   </thead>
                   <tbody>
                     {volunteerWarnings.map((w) => (
-                      <tr key={w.name} className="border-b border-orange-100">
-                        <td className="px-3 py-2 font-medium text-orange-900">{w.name}</td>
-                        <td className={`px-3 py-2 text-center ${w.belowMinPoints ? 'text-red-600 font-bold' : 'text-orange-700'}`}>
+                      <tr key={w.name} className="border-b border-orange-100 dark:border-orange-800">
+                        <td className="px-3 py-2 font-medium text-orange-900 dark:text-orange-100">{w.name}</td>
+                        <td className={`px-3 py-2 text-center ${w.belowMinPoints ? 'text-red-600 dark:text-red-400 font-bold' : 'text-orange-700 dark:text-orange-300'}`}>
                           {w.totalPoints}
                           {w.belowMinPoints && <span className="text-xs ml-1">(min: {w.expectedMinPoints})</span>}
                         </td>
-                        <td className={`px-3 py-2 text-center ${w.aboveMaxShifts ? 'text-red-600 font-bold' : 'text-orange-700'}`}>
+                        <td className={`px-3 py-2 text-center ${w.aboveMaxShifts ? 'text-red-600 dark:text-red-400 font-bold' : 'text-orange-700 dark:text-orange-300'}`}>
                           {w.numShifts}
                           {w.aboveMaxShifts && <span className="text-xs ml-1">(max: {w.expectedMaxShifts})</span>}
                         </td>
-                        <td className="px-3 py-2 text-orange-700">
+                        <td className="px-3 py-2 text-orange-700 dark:text-orange-300">
                           {w.belowMinPoints && w.aboveMaxShifts
                             ? 'Below min points & above max shifts'
                             : w.belowMinPoints
@@ -617,32 +617,32 @@ export function Results() {
 
       {activeTab === 'shifts' && (
         <div className="overflow-x-auto">
-          <table className="min-w-full border border-gray-200 text-sm">
-            <thead className="bg-gray-50">
+          <table className="min-w-full border border-gray-200 dark:border-gray-700 text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="px-3 py-2 text-left border-b">Shift ID</th>
-                <th className="px-3 py-2 text-left border-b">Role</th>
-                <th className="px-3 py-2 text-center border-b">Capacity</th>
-                <th className="px-3 py-2 text-center border-b">Filled</th>
-                <th className="px-3 py-2 text-center border-b">Points</th>
-                <th className="px-3 py-2 text-left border-b">Assigned Volunteers</th>
+                <th className="px-3 py-2 text-left border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Shift ID</th>
+                <th className="px-3 py-2 text-left border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Role</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Capacity</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Filled</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Points</th>
+                <th className="px-3 py-2 text-left border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Assigned Volunteers</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="bg-white dark:bg-gray-800">
               {shiftAssignments.map((s) => (
-                <tr key={s.shiftId} className={`hover:bg-gray-50 ${
-                  s.volunteers.length < s.capacity ? 'bg-yellow-50' : ''
+                <tr key={s.shiftId} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                  s.volunteers.length < s.capacity ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''
                 }`}>
-                  <td className="px-3 py-2 border-b font-mono">{s.shiftId}</td>
-                  <td className="px-3 py-2 border-b">{s.role}</td>
-                  <td className="px-3 py-2 border-b text-center">{s.capacity}</td>
-                  <td className="px-3 py-2 border-b text-center">
-                    <span className={s.volunteers.length < s.capacity ? 'text-yellow-600 font-bold' : 'text-green-600'}>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 font-mono text-gray-800 dark:text-gray-200">{s.shiftId}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">{s.role}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center text-gray-700 dark:text-gray-300">{s.capacity}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center">
+                    <span className={s.volunteers.length < s.capacity ? 'text-yellow-600 dark:text-yellow-400 font-bold' : 'text-green-600 dark:text-green-400'}>
                       {s.volunteers.length}
                     </span>
                   </td>
-                  <td className="px-3 py-2 border-b text-center">{s.points}</td>
-                  <td className="px-3 py-2 border-b">{s.volunteers.join(', ')}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center text-gray-700 dark:text-gray-300">{s.points}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300">{s.volunteers.join(', ')}</td>
                 </tr>
               ))}
             </tbody>
@@ -652,44 +652,44 @@ export function Results() {
 
       {activeTab === 'roster' && (
         <div className="overflow-x-auto">
-          <table className="min-w-full border border-gray-200 text-sm">
-            <thead className="bg-gray-50">
+          <table className="min-w-full border border-gray-200 dark:border-gray-700 text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="px-3 py-2 text-left border-b">Volunteer</th>
-                <th className="px-3 py-2 text-center border-b">Total Points</th>
-                <th className="px-3 py-2 text-center border-b"># Shifts</th>
-                <th className="px-3 py-2 text-center border-b">Rank Hits (1-5)</th>
-                <th className="px-3 py-2 text-left border-b">Assigned Shifts</th>
+                <th className="px-3 py-2 text-left border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Volunteer</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Total Points</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300"># Shifts</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Rank Hits (1-5)</th>
+                <th className="px-3 py-2 text-left border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Assigned Shifts</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="bg-white dark:bg-gray-800">
               {volunteerRosters.map((r) => {
                 const warning = getWarningFor(r.name);
                 const hasWarning = !!warning;
                 return (
-                <tr key={r.name} className={`hover:bg-gray-50 ${hasWarning ? 'bg-orange-50' : ''}`}>
-                  <td className="px-3 py-2 border-b font-medium">
+                <tr key={r.name} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${hasWarning ? 'bg-orange-50 dark:bg-orange-900/20' : ''}`}>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 font-medium text-gray-800 dark:text-gray-200">
                     {hasWarning && (
                       <span className="inline-block w-2 h-2 rounded-full bg-orange-500 mr-2" title="Affected by constraint relaxation" />
                     )}
                     {r.name}
                   </td>
-                  <td className={`px-3 py-2 border-b text-center ${warning?.belowMinPoints ? 'text-red-600 font-bold' : ''}`}>
+                  <td className={`px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center ${warning?.belowMinPoints ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
                     {r.totalPoints}
                     {warning?.belowMinPoints && (
-                      <span className="text-xs text-red-500 ml-1">(min: {warning.expectedMinPoints})</span>
+                      <span className="text-xs text-red-500 dark:text-red-400 ml-1">(min: {warning.expectedMinPoints})</span>
                     )}
                   </td>
-                  <td className={`px-3 py-2 border-b text-center ${warning?.aboveMaxShifts ? 'text-red-600 font-bold' : ''}`}>
+                  <td className={`px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center ${warning?.aboveMaxShifts ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
                     {r.shifts.length}
                     {warning?.aboveMaxShifts && (
-                      <span className="text-xs text-red-500 ml-1">(max: {warning.expectedMaxShifts})</span>
+                      <span className="text-xs text-red-500 dark:text-red-400 ml-1">(max: {warning.expectedMaxShifts})</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 border-b text-center font-mono text-xs">
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center font-mono text-xs text-gray-700 dark:text-gray-300">
                     {r.rankHits.join(' / ')}
                   </td>
-                  <td className="px-3 py-2 border-b text-gray-600 font-mono text-xs">
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-mono text-xs">
                     {r.shifts.join(', ')}
                   </td>
                 </tr>
@@ -703,70 +703,70 @@ export function Results() {
       {activeTab === 'audit' && (
         <div className="overflow-x-auto">
           {/* Legend */}
-          <div className="mb-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+          <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm text-gray-600 dark:text-gray-300">
             <strong>Satisfaction Score:</strong> Sum of (6 - rank) for each shift from preferences. Rank 1 = 5pts, Rank 2 = 4pts, ..., Rank 5 = 1pt. Unranked = 0pts.
             <span className="ml-4"><strong>Avg/Shift:</strong> Satisfaction ÷ Number of shifts (higher = better quality assignments).</span>
           </div>
-          <table className="min-w-full border border-gray-200 text-sm">
-            <thead className="bg-gray-50">
+          <table className="min-w-full border border-gray-200 dark:border-gray-700 text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="px-3 py-2 text-left border-b">Volunteer</th>
-                <th className="px-3 py-2 text-center border-b">Points</th>
-                <th className="px-3 py-2 text-center border-b"># Shifts</th>
-                <th className="px-3 py-2 text-center border-b bg-indigo-50 border-l border-indigo-200" title="Total satisfaction score">Satisfaction</th>
-                <th className="px-3 py-2 text-center border-b bg-indigo-50" title="Average satisfaction per shift">Avg/Shift</th>
-                <th className="px-3 py-2 text-center border-b bg-indigo-50 border-r border-indigo-200" title="Percentage of shifts from preferences">% From Prefs</th>
-                <th className="px-3 py-2 text-center border-b">#1</th>
-                <th className="px-3 py-2 text-center border-b">#2</th>
-                <th className="px-3 py-2 text-center border-b">#3</th>
-                <th className="px-3 py-2 text-center border-b">#4</th>
-                <th className="px-3 py-2 text-center border-b">#5</th>
-                <th className="px-3 py-2 text-left border-b">Shifts</th>
+                <th className="px-3 py-2 text-left border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Volunteer</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Points</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300"># Shifts</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 bg-indigo-50 dark:bg-indigo-900/30 border-l border-indigo-200 dark:border-indigo-700 text-gray-700 dark:text-gray-300" title="Total satisfaction score">Satisfaction</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 bg-indigo-50 dark:bg-indigo-900/30 text-gray-700 dark:text-gray-300" title="Average satisfaction per shift">Avg/Shift</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 bg-indigo-50 dark:bg-indigo-900/30 border-r border-indigo-200 dark:border-indigo-700 text-gray-700 dark:text-gray-300" title="Percentage of shifts from preferences">% From Prefs</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">#1</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">#2</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">#3</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">#4</th>
+                <th className="px-3 py-2 text-center border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">#5</th>
+                <th className="px-3 py-2 text-left border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">Shifts</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="bg-white dark:bg-gray-800">
               {auditData.map((a) => {
                 const warning = getWarningFor(a.volunteer);
                 const hasWarning = !!warning;
                 const volMetrics = metrics?.volunteerMetrics.get(a.volunteer);
                 return (
-                <tr key={a.volunteer} className={`hover:bg-gray-50 ${hasWarning ? 'bg-orange-50' : ''}`}>
-                  <td className="px-3 py-2 border-b font-medium">
+                <tr key={a.volunteer} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${hasWarning ? 'bg-orange-50 dark:bg-orange-900/20' : ''}`}>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 font-medium text-gray-800 dark:text-gray-200">
                     {hasWarning && (
                       <span className="inline-block w-2 h-2 rounded-full bg-orange-500 mr-2" title="Affected by constraint relaxation" />
                     )}
                     {a.volunteer}
                   </td>
-                  <td className={`px-3 py-2 border-b text-center ${warning?.belowMinPoints ? 'text-red-600 font-bold' : ''}`}>
+                  <td className={`px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center ${warning?.belowMinPoints ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
                     {a.totalPoints}
                   </td>
-                  <td className={`px-3 py-2 border-b text-center ${warning?.aboveMaxShifts ? 'text-red-600 font-bold' : ''}`}>
+                  <td className={`px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center ${warning?.aboveMaxShifts ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
                     {a.numShifts}
                   </td>
                   {/* Fairness metrics columns */}
-                  <td className="px-3 py-2 border-b text-center bg-indigo-50/50 border-l border-indigo-100 font-medium">
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center bg-indigo-50/50 dark:bg-indigo-900/20 border-l border-indigo-100 dark:border-indigo-800 font-medium text-gray-800 dark:text-gray-200">
                     {volMetrics?.satisfaction ?? '-'}
                   </td>
-                  <td className={`px-3 py-2 border-b text-center bg-indigo-50/50 font-medium ${
-                    volMetrics && volMetrics.avgSatisfaction >= 3 ? 'text-green-600' :
-                    volMetrics && volMetrics.avgSatisfaction >= 2 ? 'text-blue-600' :
-                    volMetrics && volMetrics.avgSatisfaction >= 1 ? 'text-yellow-600' : 'text-red-600'
+                  <td className={`px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center bg-indigo-50/50 dark:bg-indigo-900/20 font-medium ${
+                    volMetrics && volMetrics.avgSatisfaction >= 3 ? 'text-green-600 dark:text-green-400' :
+                    volMetrics && volMetrics.avgSatisfaction >= 2 ? 'text-blue-600 dark:text-blue-400' :
+                    volMetrics && volMetrics.avgSatisfaction >= 1 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
                   }`}>
                     {volMetrics?.avgSatisfaction.toFixed(2) ?? '-'}
                   </td>
-                  <td className={`px-3 py-2 border-b text-center bg-indigo-50/50 border-r border-indigo-100 ${
-                    volMetrics && volMetrics.pctFromPrefs === 100 ? 'text-green-600' :
-                    volMetrics && volMetrics.pctFromPrefs >= 75 ? 'text-blue-600' :
-                    volMetrics && volMetrics.pctFromPrefs >= 50 ? 'text-yellow-600' : 'text-red-600'
+                  <td className={`px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center bg-indigo-50/50 dark:bg-indigo-900/20 border-r border-indigo-100 dark:border-indigo-800 ${
+                    volMetrics && volMetrics.pctFromPrefs === 100 ? 'text-green-600 dark:text-green-400' :
+                    volMetrics && volMetrics.pctFromPrefs >= 75 ? 'text-blue-600 dark:text-blue-400' :
+                    volMetrics && volMetrics.pctFromPrefs >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
                   }`}>
                     {volMetrics ? `${volMetrics.pctFromPrefs.toFixed(0)}%` : '-'}
                   </td>
-                  <td className="px-3 py-2 border-b text-center">{a.rankHits[1] || 0}</td>
-                  <td className="px-3 py-2 border-b text-center">{a.rankHits[2] || 0}</td>
-                  <td className="px-3 py-2 border-b text-center">{a.rankHits[3] || 0}</td>
-                  <td className="px-3 py-2 border-b text-center">{a.rankHits[4] || 0}</td>
-                  <td className="px-3 py-2 border-b text-center">{a.rankHits[5] || 0}</td>
-                  <td className="px-3 py-2 border-b text-gray-600 font-mono text-xs">
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center text-gray-700 dark:text-gray-300">{a.rankHits[1] || 0}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center text-gray-700 dark:text-gray-300">{a.rankHits[2] || 0}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center text-gray-700 dark:text-gray-300">{a.rankHits[3] || 0}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center text-gray-700 dark:text-gray-300">{a.rankHits[4] || 0}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-center text-gray-700 dark:text-gray-300">{a.rankHits[5] || 0}</td>
+                  <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-mono text-xs">
                     {a.assignedShifts.join('; ')}
                   </td>
                 </tr>
